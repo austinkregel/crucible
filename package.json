@@ -1,0 +1,326 @@
+{
+  "name": "crucible",
+  "displayName": "Crucible",
+  "description": "Cost-optimized AI coding assistant with adversarial validation, multi-model orchestration, and intelligent caching",
+  "version": "0.1.0",
+  "publisher": "crucible",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "vscode": "^1.100.0"
+  },
+  "categories": [
+    "AI",
+    "Chat",
+    "Programming Languages"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./dist/extension/index.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "crucible",
+          "title": "Crucible",
+          "icon": "$(beaker)"
+        }
+      ]
+    },
+    "views": {
+      "crucible": [
+        {
+          "type": "webview",
+          "id": "crucible.chatView",
+          "name": "Chat"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "crucible.focusChat",
+        "title": "Crucible: Focus Chat"
+      },
+      {
+        "command": "crucible.newSession",
+        "title": "Crucible: New Chat Session"
+      },
+      {
+        "command": "crucible.clearCache",
+        "title": "Crucible: Clear Cache"
+      },
+      {
+        "command": "crucible.setApiKey",
+        "title": "Crucible: Set API Key"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "crucible.focusChat",
+        "key": "ctrl+l",
+        "mac": "cmd+l"
+      }
+    ],
+    "configuration": {
+      "title": "Crucible",
+      "properties": {
+        "crucible.providers.openai.model": {
+          "type": "string",
+          "default": "gpt-4o",
+          "description": "Default OpenAI model"
+        },
+        "crucible.providers.openai.baseUrl": {
+          "type": "string",
+          "default": "",
+          "description": "Custom OpenAI-compatible base URL (leave empty for default)"
+        },
+        "crucible.providers.anthropic.model": {
+          "type": "string",
+          "default": "claude-sonnet-4-5-20250514",
+          "description": "Default Anthropic model"
+        },
+        "crucible.providers.ollama.model": {
+          "type": "string",
+          "default": "qwen3.6:35b",
+          "description": "Default Ollama model"
+        },
+        "crucible.providers.ollama.baseUrl": {
+          "type": "string",
+          "default": "http://localhost:11434",
+          "description": "Ollama server URL"
+        },
+        "crucible.roles.planner": {
+          "type": "object",
+          "default": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5-20250514"
+          },
+          "description": "Model assigned to the planner role (Agent mode)",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "crucible.roles.executor": {
+          "type": "object",
+          "default": {
+            "provider": "ollama",
+            "model": "qwen3-coder:30b"
+          },
+          "description": "Model assigned to the executor role (Agent mode)",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "crucible.roles.validator": {
+          "type": "object",
+          "default": {
+            "provider": "ollama",
+            "model": "qwen3.6:35b"
+          },
+          "description": "Model assigned to the validator role (Agent mode)",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "crucible.roles.postValidator": {
+          "type": "object",
+          "default": {
+            "provider": "anthropic",
+            "model": "claude-sonnet-4-5-20250514"
+          },
+          "description": "Model assigned to the post-validator role (Agent mode)",
+          "properties": {
+            "provider": {
+              "type": "string"
+            },
+            "model": {
+              "type": "string"
+            }
+          }
+        },
+        "crucible.adversarial.confidenceThreshold": {
+          "type": "number",
+          "default": 0.7,
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Minimum confidence score from validator to proceed with execution"
+        },
+        "crucible.adversarial.maxIterations": {
+          "type": "integer",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10,
+          "description": "Maximum planner-validator refinement iterations"
+        },
+        "crucible.adversarial.postValidation": {
+          "type": "boolean",
+          "default": true,
+          "description": "Run post-validation on completed implementations"
+        },
+        "crucible.terminal.allowedCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "npm",
+            "npx",
+            "yarn",
+            "pnpm",
+            "git",
+            "ls",
+            "cat",
+            "head",
+            "tail",
+            "grep",
+            "find",
+            "node",
+            "python",
+            "pip",
+            "cargo",
+            "go",
+            "make"
+          ],
+          "description": "Commands the agent is allowed to run"
+        },
+        "crucible.terminal.blockedCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "rm -rf /",
+            "sudo",
+            "shutdown",
+            "reboot",
+            "mkfs",
+            "dd"
+          ],
+          "description": "Commands the agent is never allowed to run"
+        },
+        "crucible.terminal.requireApproval": {
+          "type": "boolean",
+          "default": true,
+          "description": "Require user approval before running terminal commands"
+        },
+        "crucible.indexing.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic codebase indexing for semantic code search"
+        },
+        "crucible.indexing.embeddingModel": {
+          "type": "string",
+          "default": "nomic-embed-text",
+          "description": "Ollama model used for generating code embeddings"
+        },
+        "crucible.indexing.maxFileSize": {
+          "type": "number",
+          "default": 102400,
+          "description": "Maximum file size in bytes to index (default 100KB)"
+        },
+        "crucible.indexing.maxFiles": {
+          "type": "integer",
+          "default": 100000,
+          "description": "Maximum number of files to index in a workspace"
+        },
+        "crucible.indexing.excludePatterns": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "description": "Additional file path patterns to exclude from indexing"
+        },
+        "crucible.mcp.servers": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "transport": {
+                "type": "string",
+                "enum": [
+                  "stdio",
+                  "http"
+                ]
+              },
+              "command": {
+                "type": "string"
+              },
+              "args": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "url": {
+                "type": "string"
+              }
+            }
+          },
+          "default": [],
+          "description": "MCP servers to connect to"
+        }
+      }
+    }
+  },
+  "scripts": {
+    "dev": "vite build --watch",
+    "build": "vite build",
+    "check-types": "tsc --noEmit",
+    "package": "vsce package --no-dependencies",
+    "lint": "eslint extension/ src/",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:coverage": "vitest run --coverage"
+  },
+  "devDependencies": {
+    "@anthropic-ai/sdk": "^0.39.0",
+    "@lancedb/lancedb": "^0.27.2",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@tailwindcss/postcss": "^4.2.4",
+    "@tomjs/vite-plugin-vscode": "^7.1.1",
+    "@types/node": "^22.0.0",
+    "@types/picomatch": "^4.0.3",
+    "@types/vscode": "^1.100.0",
+    "@types/vscode-webview": "^1.57.5",
+    "@vitejs/plugin-vue": "^5.2.0",
+    "@vitest/coverage-v8": "^4.1.5",
+    "@vue/test-utils": "^2.4.10",
+    "autoprefixer": "^10.4.20",
+    "code-chunk": "^0.1.14",
+    "happy-dom": "^20.9.0",
+    "marked": "^15.0.0",
+    "ollama": "^0.5.0",
+    "openai": "^4.80.0",
+    "pinia": "^3.0.0",
+    "postcss": "^8.5.0",
+    "tailwindcss": "^4.0.0",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.5",
+    "vue": "^3.5.0",
+    "zod": "^3.25.0"
+  },
+  "dependencies": {
+    "picomatch": "^4.0.4"
+  }
+}

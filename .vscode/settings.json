@@ -1,0 +1,10 @@
+{
+    "crucible.roles.planner": {
+        "provider": "anthropic",
+        "model": "claude-opus-4-8"
+    },
+    "crucible.roles.postValidator": {
+        "provider": "anthropic",
+        "model": "claude-sonnet-5"
+    }
+}
