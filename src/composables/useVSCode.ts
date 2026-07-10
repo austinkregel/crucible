@@ -10,7 +10,6 @@ let vscodeApi: VSCodeApi | undefined;
 
 function getVSCodeApi(): VSCodeApi {
   if (!vscodeApi) {
-    // @ts-expect-error acquireVsCodeApi is injected by the webview host
     vscodeApi = acquireVsCodeApi();
   }
   return vscodeApi!;
