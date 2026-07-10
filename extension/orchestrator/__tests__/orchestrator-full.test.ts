@@ -141,6 +141,27 @@ describe('Orchestrator', () => {
       expect(errorEvent).toBeDefined();
       expect(errorEvent!.data.message).toContain('kaboom');
     });
+
+    // Regression: the adversarial planning flow "died" silently when the
+    // pre-flight model-readiness check threw. Pre-flight ran BEFORE the
+    // try/catch, so the failure escaped as an unhandled rejection instead of
+    // an `error` event -- leaving the UI stuck mid-planning with no feedback.
+    it('does not reject and surfaces an error event when preflight fails', async () => {
+      const registry = {
+        getByRole: vi.fn(() => { throw new Error('preflight boom'); }),
+      } as any;
+
+      const orchestrator = new Orchestrator(registry, store as any);
+
+      // Must resolve (not reject) so the caller can post agentEnd + error.
+      await expect(
+        orchestrator.runPlanOnly('query', [], (e) => events.push(e)),
+      ).resolves.toBeUndefined();
+
+      const errorEvent = events.find((e) => e.type === 'error');
+      expect(errorEvent).toBeDefined();
+      expect(errorEvent!.data.message).toContain('preflight boom');
+    });
   });
 
   describe('runAgentWithPlan', () => {
@@ -250,6 +271,24 @@ describe('Orchestrator', () => {
       const errorEvent = events.find((e) => e.type === 'error');
       expect(errorEvent).toBeDefined();
       expect(errorEvent!.data.message).toContain('confidence threshold');
+    });
+
+    // Regression companion to runPlanOnly: full agent mode must also convert a
+    // preflight failure into an `error` event rather than an unhandled rejection.
+    it('does not reject and surfaces an error event when preflight fails', async () => {
+      const registry = {
+        getByRole: vi.fn(() => { throw new Error('preflight boom'); }),
+      } as any;
+
+      const orchestrator = new Orchestrator(registry, store as any);
+
+      await expect(
+        orchestrator.runAgent('query', [], (e) => events.push(e)),
+      ).resolves.toBeUndefined();
+
+      const errorEvent = events.find((e) => e.type === 'error');
+      expect(errorEvent).toBeDefined();
+      expect(errorEvent!.data.message).toContain('preflight boom');
     });
   });
 });

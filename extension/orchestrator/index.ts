@@ -87,10 +87,10 @@ export class Orchestrator {
     const confidenceThreshold = config.get<number>('adversarial.confidenceThreshold', 0.7);
     const maxIterations = config.get<number>('adversarial.maxIterations', 3);
 
-    const ready = await this.preflightCheck(['planner', 'validator'], onEvent);
-    if (!ready) return;
-
     try {
+      const ready = await this.preflightCheck(['planner', 'validator'], onEvent);
+      if (!ready) return;
+
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
 
@@ -151,10 +151,11 @@ export class Orchestrator {
     const rolesToCheck: ModelRole[] = enablePostValidation
       ? ['executor', 'postValidator']
       : ['executor'];
-    const ready = await this.preflightCheck(rolesToCheck, onEvent);
-    if (!ready) return;
 
     try {
+      const ready = await this.preflightCheck(rolesToCheck, onEvent);
+      if (!ready) return;
+
       onEvent({ type: 'phaseStarted', data: { phase: 'execution' } });
       const executionResults: ExecutionResult[] = [];
 
@@ -222,10 +223,11 @@ export class Orchestrator {
     const rolesToCheck: ModelRole[] = enablePostValidation
       ? ['planner', 'validator', 'executor', 'postValidator']
       : ['planner', 'validator', 'executor'];
-    const ready = await this.preflightCheck(rolesToCheck, onEvent);
-    if (!ready) return;
 
     try {
+      const ready = await this.preflightCheck(rolesToCheck, onEvent);
+      if (!ready) return;
+
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
 
