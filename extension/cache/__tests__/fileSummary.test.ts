@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { FileSummaryCache, type FileSummaryEntry } from '../fileSummary';
 import { hashFile } from '../store';
 import { MockCacheStore } from '../../__mocks__/cacheStore';

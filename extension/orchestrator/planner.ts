@@ -2,7 +2,6 @@ import type { ProviderRegistry } from '../providers/registry';
 import type { ChatMessage } from '../providers/types';
 import { ContextCompiler } from '../context/compiler';
 import type { CollectedContext } from '../context/collector';
-import { collectStream } from '../utils/stream';
 import type { Plan, OrchestratorEventHandler } from './types';
 
 export class Planner {

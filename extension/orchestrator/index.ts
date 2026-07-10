@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
 import type { ProviderRegistry } from '../providers/registry';
 import { ContextCompiler } from '../context/compiler';
-import { ContextCollector, type CollectedContext } from '../context/collector';
+import { ContextCollector } from '../context/collector';
 import { CacheStore } from '../cache/store';
 import { RollingMemory } from '../cache/rollingMemory';
 import { Planner } from './planner';
 import { Validator } from './validator';
 import { Executor } from './executor';
 import { PostValidator } from './postValidator';
-import type { Plan, ValidationResult, ExecutionResult, OrchestratorEvent, OrchestratorEventHandler } from './types';
+import type { Plan, ValidationResult, ExecutionResult, OrchestratorEventHandler } from './types';
 import type { ToolRunner } from '../tools/runner';
 import type { AuditLogger } from '../audit/logger';
 import type { ModelRole } from '../providers/types';
@@ -87,10 +87,10 @@ export class Orchestrator {
     const confidenceThreshold = config.get<number>('adversarial.confidenceThreshold', 0.7);
     const maxIterations = config.get<number>('adversarial.maxIterations', 3);
 
-    const ready = await this.preflightCheck(['planner', 'validator'], onEvent);
-    if (!ready) return;
-
     try {
+      const ready = await this.preflightCheck(['planner', 'validator'], onEvent);
+      if (!ready) return;
+
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
 
@@ -151,10 +151,11 @@ export class Orchestrator {
     const rolesToCheck: ModelRole[] = enablePostValidation
       ? ['executor', 'postValidator']
       : ['executor'];
-    const ready = await this.preflightCheck(rolesToCheck, onEvent);
-    if (!ready) return;
 
     try {
+      const ready = await this.preflightCheck(rolesToCheck, onEvent);
+      if (!ready) return;
+
       onEvent({ type: 'phaseStarted', data: { phase: 'execution' } });
       const executionResults: ExecutionResult[] = [];
 
@@ -174,7 +175,11 @@ export class Orchestrator {
           step.status = result.success ? 'done' : 'failed';
           step.result = result.diff;
 
-          onEvent({ type: 'stepCompleted', data: result });
+          // executeStep signals failure by returning success:false, not by throwing.
+          onEvent({
+            type: result.success ? 'stepCompleted' : 'stepFailed',
+            data: result,
+          });
         } catch (err: any) {
           if (signal?.aborted) return;
           step.status = 'failed';
@@ -222,10 +227,11 @@ export class Orchestrator {
     const rolesToCheck: ModelRole[] = enablePostValidation
       ? ['planner', 'validator', 'executor', 'postValidator']
       : ['planner', 'validator', 'executor'];
-    const ready = await this.preflightCheck(rolesToCheck, onEvent);
-    if (!ready) return;
 
     try {
+      const ready = await this.preflightCheck(rolesToCheck, onEvent);
+      if (!ready) return;
+
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
 
@@ -291,7 +297,11 @@ export class Orchestrator {
           step.status = result.success ? 'done' : 'failed';
           step.result = result.diff;
 
-          onEvent({ type: 'stepCompleted', data: result });
+          // executeStep signals failure by returning success:false, not by throwing.
+          onEvent({
+            type: result.success ? 'stepCompleted' : 'stepFailed',
+            data: result,
+          });
         } catch (err: any) {
           if (signal?.aborted) return;
           step.status = 'failed';

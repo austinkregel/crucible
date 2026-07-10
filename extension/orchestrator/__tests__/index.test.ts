@@ -1,5 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { Orchestrator } from '../index';
+import { MockCacheStore } from '../../__mocks__/cacheStore';
 import type { OrchestratorEvent, OrchestratorEventHandler } from '../types';
+
+function providerYielding(response: string) {
+  return {
+    streamChat: vi.fn(async function* () {
+      yield response;
+    }),
+    supportsTools: vi.fn(() => false),
+  };
+}
 
 describe('Orchestrator pipeline events', () => {
   let events: OrchestratorEvent[];
@@ -11,30 +22,39 @@ describe('Orchestrator pipeline events', () => {
   });
 
   it('runAgent emits phaseStarted("planning") before generating plan', async () => {
-    const { Orchestrator } = await import('../index');
-
-    const mockProvider = {
-      streamChat: vi.fn(async function* () {
-        yield '{"plan":"test","steps":[],"assumptions":[]}';
+    const registry = {
+      getByRole: vi.fn((role: string) => {
+        switch (role) {
+          case 'planner':
+            return { provider: providerYielding('{"plan":"test","steps":[],"assumptions":[]}'), model: 'm' };
+          case 'validator':
+            return {
+              provider: providerYielding(
+                '{"issues":[],"missing_cases":[],"conflicts":[],"confidence_score":0.9}',
+              ),
+              model: 'm',
+            };
+          case 'postValidator':
+            return {
+              provider: providerYielding('{"approved":true,"issues":[],"suggested_fixes":[]}'),
+              model: 'm',
+            };
+          default:
+            return { provider: providerYielding('done'), model: 'm' };
+        }
       }),
-      supportsTools: vi.fn(() => false),
-    };
-
-    const mockRegistry = {
-      getByRole: vi.fn(() => ({ provider: mockProvider, model: 'test' })),
     } as any;
 
-    const mockStore = {
-      get: vi.fn(),
-      set: vi.fn(),
-      clearAll: vi.fn(),
-      has: vi.fn(() => false),
-    } as any;
+    const orchestrator = new Orchestrator(registry, new MockCacheStore() as any);
+    await orchestrator.runAgent('Build a feature', [], onEvent);
 
-    // We need to mock dependencies that the constructor builds internally
-    // This is a higher-level integration test that verifies the event sequence
-    // For now, verify the event type exists in the types
-    expect(true).toBe(true); // placeholder for integration test
+    const planningPhaseAt = events.findIndex(
+      (e) => e.type === 'phaseStarted' && e.data.phase === 'planning',
+    );
+    const planGeneratedAt = events.findIndex((e) => e.type === 'planGenerated');
+
+    expect(planningPhaseAt).toBeGreaterThanOrEqual(0);
+    expect(planGeneratedAt).toBeGreaterThan(planningPhaseAt);
   });
 
   it('all streamToken events include role field', () => {

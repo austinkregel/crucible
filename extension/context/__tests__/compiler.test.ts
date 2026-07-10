@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach } from 'vitest';
 import { ContextCompiler } from '../compiler';
 import type { CollectedContext } from '../collector';
 

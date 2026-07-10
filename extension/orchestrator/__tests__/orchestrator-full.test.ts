@@ -11,7 +11,7 @@ function createMockStreamChat(tokens: string[]) {
   };
 }
 
-function makePlanJson(confidence = 0.9) {
+function makePlanJson() {
   return JSON.stringify({
     plan: 'Test plan',
     steps: [{ id: 's1', goal: 'Step one', files: ['a.ts'], risks: [], constraints: [] }],
@@ -105,10 +105,8 @@ describe('Orchestrator', () => {
         }),
       };
 
-      let planCallCount = 0;
       const plannerProvider = {
         streamChat: vi.fn(() => {
-          planCallCount++;
           return createMockStreamChat([makePlanJson()])();
         }),
       };
@@ -140,6 +138,27 @@ describe('Orchestrator', () => {
       const errorEvent = events.find((e) => e.type === 'error');
       expect(errorEvent).toBeDefined();
       expect(errorEvent!.data.message).toContain('kaboom');
+    });
+
+    // Regression: the adversarial planning flow "died" silently when the
+    // pre-flight model-readiness check threw. Pre-flight ran BEFORE the
+    // try/catch, so the failure escaped as an unhandled rejection instead of
+    // an `error` event -- leaving the UI stuck mid-planning with no feedback.
+    it('does not reject and surfaces an error event when preflight fails', async () => {
+      const registry = {
+        getByRole: vi.fn(() => { throw new Error('preflight boom'); }),
+      } as any;
+
+      const orchestrator = new Orchestrator(registry, store as any);
+
+      // Must resolve (not reject) so the caller can post agentEnd + error.
+      await expect(
+        orchestrator.runPlanOnly('query', [], (e) => events.push(e)),
+      ).resolves.toBeUndefined();
+
+      const errorEvent = events.find((e) => e.type === 'error');
+      expect(errorEvent).toBeDefined();
+      expect(errorEvent!.data.message).toContain('preflight boom');
     });
   });
 
@@ -193,6 +212,57 @@ describe('Orchestrator', () => {
 
       const types = events.map((e) => e.type);
       expect(types).toContain('stepFailed');
+    });
+
+    // Regression: executeStep signals failure by *returning* success:false (circuit
+    // breaker / error abort), it does not throw. The orchestrator only emitted
+    // stepFailed from its catch block, so failed steps were reported as
+    // stepCompleted -- which the webview renders as a green "done" step,
+    // swallowing the error entirely.
+    it('emits stepFailed (not stepCompleted) when a step returns success:false', async () => {
+      const failingProvider = {
+        streamChat: vi.fn(() => { throw new Error('Model unavailable'); }),
+      };
+      const registry = {
+        getByRole: vi.fn((role: string) =>
+          role === 'executor' ? { provider: failingProvider, model: 'm' } : undefined,
+        ),
+      } as any;
+
+      const plan: Plan = {
+        plan: 'Fail test',
+        steps: [{ id: 's1', goal: 'Broken step', files: [], risks: [], constraints: [], status: 'pending' }],
+        assumptions: [],
+      };
+
+      const orchestrator = new Orchestrator(registry, store as any);
+      await orchestrator.runAgentWithPlan(plan, (e) => events.push(e));
+
+      const types = events.map((e) => e.type);
+      expect(types).toContain('stepFailed');
+      expect(types).not.toContain('stepCompleted');
+      expect(plan.steps[0].status).toBe('failed');
+
+      const failure = events.find((e) => e.type === 'stepFailed');
+      expect(failure!.data.success).toBe(false);
+      expect(failure!.data.error).toBeTruthy();
+    });
+
+    it('emits stepCompleted (not stepFailed) when a step succeeds', async () => {
+      const registry = createFullRegistry([], [], ['Done, no tools needed.'], [makePostValidationJson()]);
+      const plan: Plan = {
+        plan: 'Happy path',
+        steps: [{ id: 's1', goal: 'Step', files: [], risks: [], constraints: [], status: 'pending' }],
+        assumptions: [],
+      };
+
+      const orchestrator = new Orchestrator(registry, store as any);
+      await orchestrator.runAgentWithPlan(plan, (e) => events.push(e));
+
+      const types = events.map((e) => e.type);
+      expect(types).toContain('stepCompleted');
+      expect(types).not.toContain('stepFailed');
+      expect(plan.steps[0].status).toBe('done');
     });
 
     it('skips post-validation when disabled', async () => {
@@ -250,6 +320,24 @@ describe('Orchestrator', () => {
       const errorEvent = events.find((e) => e.type === 'error');
       expect(errorEvent).toBeDefined();
       expect(errorEvent!.data.message).toContain('confidence threshold');
+    });
+
+    // Regression companion to runPlanOnly: full agent mode must also convert a
+    // preflight failure into an `error` event rather than an unhandled rejection.
+    it('does not reject and surfaces an error event when preflight fails', async () => {
+      const registry = {
+        getByRole: vi.fn(() => { throw new Error('preflight boom'); }),
+      } as any;
+
+      const orchestrator = new Orchestrator(registry, store as any);
+
+      await expect(
+        orchestrator.runAgent('query', [], (e) => events.push(e)),
+      ).resolves.toBeUndefined();
+
+      const errorEvent = events.find((e) => e.type === 'error');
+      expect(errorEvent).toBeDefined();
+      expect(errorEvent!.data.message).toContain('preflight boom');
     });
   });
 });

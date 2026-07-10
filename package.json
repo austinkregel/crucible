@@ -286,15 +286,16 @@
     "dev": "vite build --watch",
     "build": "vite build",
     "check-types": "tsc --noEmit",
-    "package": "vsce package --no-dependencies",
+    "package": "vsce package",
     "lint": "eslint extension/ src/",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage"
+    "test:coverage": "vitest run --coverage",
+    "verify:vsix": "node scripts/verify-vsix.mjs"
   },
   "devDependencies": {
     "@anthropic-ai/sdk": "^0.39.0",
-    "@lancedb/lancedb": "^0.27.2",
+    "@eslint/js": "^9.39.4",
     "@modelcontextprotocol/sdk": "^1.29.0",
     "@tailwindcss/postcss": "^4.2.4",
     "@tomjs/vite-plugin-vscode": "^7.1.1",
@@ -304,9 +305,12 @@
     "@types/vscode-webview": "^1.57.5",
     "@vitejs/plugin-vue": "^5.2.0",
     "@vitest/coverage-v8": "^4.1.5",
+    "@vscode/vsce": "^3.9.2",
     "@vue/test-utils": "^2.4.10",
     "autoprefixer": "^10.4.20",
-    "code-chunk": "^0.1.14",
+    "eslint": "^9.39.4",
+    "eslint-plugin-vue": "^9.33.0",
+    "globals": "^15.15.0",
     "happy-dom": "^20.9.0",
     "marked": "^15.0.0",
     "ollama": "^0.5.0",
@@ -315,12 +319,16 @@
     "postcss": "^8.5.0",
     "tailwindcss": "^4.0.0",
     "typescript": "^5.7.0",
+    "typescript-eslint": "^8.63.0",
     "vite": "^6.0.0",
     "vitest": "^4.1.5",
     "vue": "^3.5.0",
+    "vue-eslint-parser": "^9.4.3",
     "zod": "^3.25.0"
   },
   "dependencies": {
+    "@lancedb/lancedb": "^0.27.2",
+    "code-chunk": "^0.1.14",
     "picomatch": "^4.0.4"
   }
 }

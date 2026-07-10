@@ -20,7 +20,7 @@ describe('TerminalTool', () => {
   });
 
   it('executes command and returns stdout on success', async () => {
-    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: Function) =>
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
       cb(null, 'output', ''),
     );
 
@@ -31,7 +31,7 @@ describe('TerminalTool', () => {
   });
 
   it('returns error when command fails', async () => {
-    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: Function) =>
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
       cb(new Error('fail'), '', 'error msg'),
     );
 
@@ -42,7 +42,7 @@ describe('TerminalTool', () => {
   });
 
   it('returns stderr appended to output when present', async () => {
-    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: Function) =>
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
       cb(null, 'stdout', 'warn'),
     );
 
@@ -66,7 +66,7 @@ describe('TerminalTool', () => {
   });
 
   it('uses workspace folder as cwd', async () => {
-    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: Function) => {
+    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: (...args: any[]) => void) => {
       expect(opts.cwd).toBe('/test-workspace');
       cb(null, 'ok', '');
     });
@@ -77,7 +77,7 @@ describe('TerminalTool', () => {
   });
 
   it('uses relative cwd when provided', async () => {
-    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: Function) => {
+    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: (...args: any[]) => void) => {
       expect(opts.cwd).toBe('/test-workspace/src');
       cb(null, 'ok', '');
     });

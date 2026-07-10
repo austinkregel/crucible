@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, nextTick, watch, onMounted, computed } from 'vue';
-import { useChatStore, type AgentPhase, type PlanArtifact } from '../stores/chat';
+import { useChatStore, type AgentPhase } from '../stores/chat';
 import { useSettingsStore } from '../stores/settings';
 import { useVSCode } from '../composables/useVSCode';
 import MessageBubble from './MessageBubble.vue';

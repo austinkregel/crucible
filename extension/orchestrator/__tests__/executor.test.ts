@@ -166,7 +166,7 @@ describe('Executor', () => {
       const compiler = makeMockCompiler();
       const executor = new Executor(registry, compiler, toolRunner);
 
-      const result = await executor.executeStep(makeStep(), 'relevant code', onEvent);
+      await executor.executeStep(makeStep(), 'relevant code', onEvent);
 
       // Should cap at maxIterations (default 15) not 25
       expect(provider.streamChat.mock.calls.length).toBeLessThanOrEqual(16);
@@ -184,6 +184,41 @@ describe('Executor', () => {
       expect(result).toHaveProperty('stepId', 'step_1');
       expect(result).toHaveProperty('success', true);
       expect(result).toHaveProperty('filesChanged');
+    });
+
+    // Regression: success was computed as `anyToolSucceeded || filesChanged.length > 0`,
+    // which conflates "made a change" with "succeeded". A read-only step that the
+    // model answers without calling any tool is a legitimate success.
+    it('reports success for a read-only step that calls no tools', async () => {
+      const provider = makeMockProvider(['I inspected the module; no changes needed.']);
+      const registry = makeMockRegistry(provider);
+      const toolRunner = makeMockToolRunner();
+      const compiler = makeMockCompiler();
+      const executor = new Executor(registry, compiler, toolRunner);
+
+      const result = await executor.executeStep(makeStep(), 'relevant code', onEvent);
+
+      expect(result.success).toBe(true);
+      expect(result.error).toBeUndefined();
+      expect(toolRunner.executeTool).not.toHaveBeenCalled();
+    });
+
+    // Regression: a runaway step that never converges was reported as success:true
+    // purely because its tool calls happened to succeed before we cut it off.
+    it('reports failure when the tool loop exhausts the iteration cap', async () => {
+      const infiniteToolCall = `<tool_call>
+{"name": "read_file", "arguments": {"path": "loop.ts"}}
+</tool_call>`;
+      const provider = makeMockProvider(Array(25).fill(infiniteToolCall));
+      const registry = makeMockRegistry(provider);
+      const toolRunner = makeMockToolRunner();
+      const compiler = makeMockCompiler();
+      const executor = new Executor(registry, compiler, toolRunner);
+
+      const result = await executor.executeStep(makeStep(), 'relevant code', onEvent);
+
+      expect(result.success).toBe(false);
+      expect(result.error).toMatch(/iteration|converge/i);
     });
   });
 

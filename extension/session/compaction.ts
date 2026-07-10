@@ -1,4 +1,4 @@
-import type { ChatMessage, LLMProvider, TokenUsage } from '../providers/types';
+import type { ChatMessage, LLMProvider } from '../providers/types';
 import { getModelLimits } from '../providers/types';
 import { estimateTokens } from '../utils/tokens';
 import type { StoredMessage, StoredTokenUsage } from './history';

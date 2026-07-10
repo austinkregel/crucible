@@ -1,4 +1,4 @@
-import { ref, onMounted, onUnmounted } from 'vue';
+import { onMounted, onUnmounted } from 'vue';
 
 interface VSCodeApi {
   postMessage(message: unknown): void;
@@ -10,7 +10,6 @@ let vscodeApi: VSCodeApi | undefined;
 
 function getVSCodeApi(): VSCodeApi {
   if (!vscodeApi) {
-    // @ts-expect-error acquireVsCodeApi is injected by the webview host
     vscodeApi = acquireVsCodeApi();
   }
   return vscodeApi!;

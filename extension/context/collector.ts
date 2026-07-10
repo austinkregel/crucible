@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import { parseMentions, type Mention } from './mentions';
 import { CacheStore } from '../cache/store';
-import { FileSummaryCache, type FileSummaryEntry } from '../cache/fileSummary';
+import { FileSummaryCache } from '../cache/fileSummary';
 
 export interface ContextFile {
   path: string;

@@ -57,6 +57,15 @@ export class PermissionsManager {
     return { allowed: true };
   }
 
+  /**
+   * Record a command the user already approved upstream (the ToolRunner prompts
+   * before dispatching), so checkCommand does not prompt a second time for it.
+   * Allow/block list enforcement still applies.
+   */
+  approveForSession(command: string): void {
+    this.sessionApproved.add(command);
+  }
+
   clearSessionApprovals(): void {
     this.sessionApproved.clear();
   }

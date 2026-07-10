@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { AgentTool, ToolResult, ToolAccessPolicy } from './types';
 import type { OrchestratorEventHandler } from '../orchestrator/types';
 import type { AuditLogger } from '../audit/logger';
-import { FileReadTool, FileWriteTool, FileEditTool, type PolicyProvider } from './fileReadWrite';
+import { FileReadTool, FileWriteTool, FileEditTool } from './fileReadWrite';
 import { CodeSearchTool } from './codeSearch';
 import { TerminalTool } from './terminal';
 import { ListFilesTool } from './listFiles';
@@ -13,6 +13,7 @@ export class ToolRunner {
   private policy: ToolAccessPolicy | null = null;
   private sessionApprovedTools = new Set<string>();
   private auditLogger?: AuditLogger;
+  private permissions?: PermissionsManager;
 
   register(tool: AgentTool): void {
     this.tools.set(tool.name, tool);
@@ -64,11 +65,12 @@ export class ToolRunner {
 
   registerBuiltins(permissions?: PermissionsManager): void {
     const policyProvider = () => this.policy;
+    this.permissions = permissions ?? new PermissionsManager();
     this.register(new FileReadTool(policyProvider));
     this.register(new FileWriteTool(policyProvider));
     this.register(new FileEditTool(policyProvider));
     this.register(new CodeSearchTool());
-    this.register(new TerminalTool(permissions ?? new PermissionsManager()));
+    this.register(new TerminalTool(this.permissions));
     this.register(new ListFilesTool());
   }
 
@@ -140,6 +142,12 @@ export class ToolRunner {
 
       if (choice === 'Allow & Remember') {
         this.sessionApprovedTools.add(`${name}:${JSON.stringify(args)}`);
+      }
+
+      // TerminalTool re-checks permissions downstream. Record the approval we
+      // just obtained so the user isn't prompted twice for the same command.
+      if (name === 'run_command' && typeof args.command === 'string') {
+        this.permissions?.approveForSession(args.command);
       }
     }
 

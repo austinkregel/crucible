@@ -17,7 +17,7 @@ describe('CodeSearchTool', () => {
   });
 
   it('returns search results on success', async () => {
-    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: Function) =>
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
       cb(null, 'src/main.ts:1:hello world', ''),
     );
 
@@ -30,7 +30,7 @@ describe('CodeSearchTool', () => {
   it('returns "No matches found." when rg exits with code 1', async () => {
     const err: any = new Error('exit code 1');
     err.code = 1;
-    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: Function) =>
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
       cb(err, '', ''),
     );
 
@@ -43,7 +43,7 @@ describe('CodeSearchTool', () => {
   it('returns error on rg failure', async () => {
     const err: any = new Error('rg not found');
     err.code = 127;
-    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: Function) =>
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
       cb(err, '', 'rg not found'),
     );
 
@@ -54,7 +54,7 @@ describe('CodeSearchTool', () => {
   });
 
   it('includes glob in command when provided', async () => {
-    (cp.exec as any).mockImplementation((cmd: string, _opts: any, cb: Function) => {
+    (cp.exec as any).mockImplementation((cmd: string, _opts: any, cb: (...args: any[]) => void) => {
       expect(cmd).toContain('--glob "*.ts"');
       cb(null, 'match', '');
     });
