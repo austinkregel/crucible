@@ -1,3 +1,4 @@
+import * as vscode from 'vscode';
 import type { ToolAccessPolicy } from './types';
 
 const READ_ONLY_TOOLS = ['read_file', 'list_files', 'search_code'];
@@ -12,7 +13,10 @@ export const PLAN_POLICY: ToolAccessPolicy = {
   terminalAllowed: false,
 };
 
-export function createAgentPolicy(workspaceRoot: string): ToolAccessPolicy {
+export function createAgentPolicy(
+  workspaceRoot: string,
+  requireTerminalApproval = true,
+): ToolAccessPolicy {
   return {
     allowedTools: [
       'read_file', 'write_file', 'edit_file',
@@ -25,7 +29,7 @@ export function createAgentPolicy(workspaceRoot: string): ToolAccessPolicy {
     requireApproval: {
       write_file: true,
       edit_file: true,
-      run_command: false,
+      run_command: requireTerminalApproval,
     },
   };
 }
@@ -39,7 +43,11 @@ export function getPolicyForMode(
       return ASK_POLICY;
     case 'plan':
       return PLAN_POLICY;
-    case 'agent':
-      return createAgentPolicy(workspaceRoot ?? '.');
+    case 'agent': {
+      const requireTerminalApproval = vscode.workspace
+        .getConfiguration('crucible')
+        .get<boolean>('terminal.requireApproval', true);
+      return createAgentPolicy(workspaceRoot ?? '.', requireTerminalApproval);
+    }
   }
 }

@@ -1,5 +1,6 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, afterEach } from 'vitest';
 import { ASK_POLICY, PLAN_POLICY, createAgentPolicy, getPolicyForMode } from '../policies';
+import { _configStore } from '../../__mocks__/vscode';
 
 describe('ToolAccessPolicy definitions', () => {
   describe('ASK_POLICY', () => {
@@ -51,9 +52,38 @@ describe('ToolAccessPolicy definitions', () => {
       const policy = createAgentPolicy('/workspace');
       expect(policy.requireApproval?.run_command).toBe(true);
     });
+
+    it('requires approval for file writes', () => {
+      const policy = createAgentPolicy('/workspace');
+      expect(policy.requireApproval?.write_file).toBe(true);
+      expect(policy.requireApproval?.edit_file).toBe(true);
+    });
+
+    it('allows opting out of terminal approval explicitly', () => {
+      const policy = createAgentPolicy('/workspace', false);
+      expect(policy.requireApproval?.run_command).toBe(false);
+    });
   });
 
   describe('getPolicyForMode', () => {
+    afterEach(() => {
+      _configStore['terminal.requireApproval'] = false;
+    });
+
+    // The `crucible.terminal.requireApproval` setting must actually reach the
+    // policy the runner enforces; otherwise the setting is inert.
+    it('agent mode honors terminal.requireApproval=true from config', () => {
+      _configStore['terminal.requireApproval'] = true;
+      const policy = getPolicyForMode('agent', '/ws');
+      expect(policy.requireApproval?.run_command).toBe(true);
+    });
+
+    it('agent mode honors terminal.requireApproval=false from config', () => {
+      _configStore['terminal.requireApproval'] = false;
+      const policy = getPolicyForMode('agent', '/ws');
+      expect(policy.requireApproval?.run_command).toBe(false);
+    });
+
     it('returns ASK_POLICY for ask mode', () => {
       const policy = getPolicyForMode('ask');
       expect(policy).toBe(ASK_POLICY);

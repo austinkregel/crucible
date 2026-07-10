@@ -1,6 +1,8 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ToolRunner } from '../runner';
 import { ASK_POLICY, createAgentPolicy } from '../policies';
+import { PermissionsManager } from '../../permissions';
+import { _configStore, window } from '../../__mocks__/vscode';
 import type { AgentTool, ToolResult } from '../types';
 
 function makeMockTool(name: string): AgentTool {
@@ -90,6 +92,67 @@ describe('ToolRunner policy enforcement', () => {
     it('allows run_command', async () => {
       const result = await runner.executeTool('run_command', { command: 'ls' });
       expect(result.success).toBe(true);
+    });
+  });
+
+  // The agent policy now requires approval for run_command. Approval is prompted
+  // by the runner (audited, per-args). PermissionsManager -- reachable only via
+  // TerminalTool, i.e. only ever downstream of the runner -- must not prompt a
+  // second time for a command the runner just approved.
+  describe('run_command approval is prompted exactly once', () => {
+    let permissions: PermissionsManager;
+
+    beforeEach(() => {
+      vi.clearAllMocks();
+      _configStore['terminal.requireApproval'] = true;
+      permissions = new PermissionsManager();
+      runner = new ToolRunner();
+      runner.registerBuiltins(permissions);
+      // Replace the real TerminalTool with a mock so we don't shell out.
+      runner.register(makeMockTool('run_command'));
+      runner.setPolicy(createAgentPolicy('/workspace'));
+    });
+
+    afterEach(() => {
+      _configStore['terminal.requireApproval'] = false;
+    });
+
+    it('prompts at the runner for run_command under the agent policy', async () => {
+      window.showWarningMessage.mockResolvedValue('Allow');
+
+      const result = await runner.executeTool('run_command', { command: 'npm test' });
+
+      expect(result.success).toBe(true);
+      expect(window.showWarningMessage).toHaveBeenCalledTimes(1);
+    });
+
+    it('blocks run_command when the user denies at the runner', async () => {
+      window.showWarningMessage.mockResolvedValue('Deny');
+
+      const result = await runner.executeTool('run_command', { command: 'npm test' });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain('denied');
+    });
+
+    it('pre-authorizes the permission check so it does not prompt again', async () => {
+      window.showWarningMessage.mockResolvedValue('Allow');
+      await runner.executeTool('run_command', { command: 'npm test' });
+
+      vi.clearAllMocks();
+      const check = await permissions.checkCommand('npm test');
+
+      expect(check.allowed).toBe(true);
+      expect(window.showWarningMessage).not.toHaveBeenCalled();
+    });
+
+    it('still enforces the blocklist after runner approval', async () => {
+      window.showWarningMessage.mockResolvedValue('Allow');
+      await runner.executeTool('run_command', { command: 'sudo rm file' });
+
+      const check = await permissions.checkCommand('sudo rm file');
+      expect(check.allowed).toBe(false);
+      expect(check.reason).toContain('blocked pattern');
     });
   });
 
