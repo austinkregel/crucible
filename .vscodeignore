@@ -1,12 +1,29 @@
+# Sources -- only the built output under dist/ ships.
 .vscode/**
 src/**
 extension/**
-node_modules/**
+test/**
+coverage/**
+.crucible/**
+.github/**
+.claude/**
+
+# Config and tooling
 .gitignore
 tsconfig.json
 vite.config.ts
+vitest.config.ts
+eslint.config.js
 tailwind.config.js
 postcss.config.js
+package-lock.json
+index.html
+
+# node_modules is deliberately NOT ignored here: vsce resolves production
+# dependencies and ships only those. The extension bundle externalizes
+# @lancedb/lancedb (a native module) and code-chunk, so both must be present
+# at runtime or activation fails.
 *.map
 **/*.ts
+**/*.vsix
 !dist/**
