@@ -249,6 +249,9 @@ export class Chunker {
       .replace(/[.+^${}()|[\]\\]/g, '\\$&')
       .replace(/\*\*/g, '\u0000')
       .replace(/\*/g, '[^/]*')
+      // NUL is a deliberate placeholder for `**`, substituted above so the
+      // single-`*` rule cannot clobber it.
+      // eslint-disable-next-line no-control-regex
       .replace(/\u0000/g, '.*')
       .replace(/\?/g, '[^/]');
     if (rooted) {

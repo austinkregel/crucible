@@ -166,7 +166,7 @@ describe('Executor', () => {
       const compiler = makeMockCompiler();
       const executor = new Executor(registry, compiler, toolRunner);
 
-      const result = await executor.executeStep(makeStep(), 'relevant code', onEvent);
+      await executor.executeStep(makeStep(), 'relevant code', onEvent);
 
       // Should cap at maxIterations (default 15) not 25
       expect(provider.streamChat.mock.calls.length).toBeLessThanOrEqual(16);

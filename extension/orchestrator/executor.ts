@@ -276,9 +276,9 @@ export function parseToolCalls(
 function extractFileReferences(response: string): string[] {
   const files = new Set<string>();
   const patterns = [
-    /```[\w]*\s*\/\/\s*([\w./\-]+)/g,
-    /File:\s*([\w./\-]+)/gi,
-    /`([\w./\-]+\.\w+)`/g,
+    /```[\w]*\s*\/\/\s*([\w./-]+)/g,
+    /File:\s*([\w./-]+)/gi,
+    /`([\w./-]+\.\w+)`/g,
   ];
 
   for (const pattern of patterns) {

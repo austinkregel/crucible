@@ -1,4 +1,4 @@
-import { vi, describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect } from 'vitest';
 import { parseMentions, stripMentions } from '../mentions';
 
 describe('parseMentions', () => {

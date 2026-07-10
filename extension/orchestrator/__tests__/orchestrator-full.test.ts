@@ -11,7 +11,7 @@ function createMockStreamChat(tokens: string[]) {
   };
 }
 
-function makePlanJson(confidence = 0.9) {
+function makePlanJson() {
   return JSON.stringify({
     plan: 'Test plan',
     steps: [{ id: 's1', goal: 'Step one', files: ['a.ts'], risks: [], constraints: [] }],
@@ -105,10 +105,8 @@ describe('Orchestrator', () => {
         }),
       };
 
-      let planCallCount = 0;
       const plannerProvider = {
         streamChat: vi.fn(() => {
-          planCallCount++;
           return createMockStreamChat([makePlanJson()])();
         }),
       };

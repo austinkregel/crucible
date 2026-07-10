@@ -1,14 +1,14 @@
 import * as vscode from 'vscode';
 import type { ProviderRegistry } from '../providers/registry';
 import { ContextCompiler } from '../context/compiler';
-import { ContextCollector, type CollectedContext } from '../context/collector';
+import { ContextCollector } from '../context/collector';
 import { CacheStore } from '../cache/store';
 import { RollingMemory } from '../cache/rollingMemory';
 import { Planner } from './planner';
 import { Validator } from './validator';
 import { Executor } from './executor';
 import { PostValidator } from './postValidator';
-import type { Plan, ValidationResult, ExecutionResult, OrchestratorEvent, OrchestratorEventHandler } from './types';
+import type { Plan, ValidationResult, ExecutionResult, OrchestratorEventHandler } from './types';
 import type { ToolRunner } from '../tools/runner';
 import type { AuditLogger } from '../audit/logger';
 import type { ModelRole } from '../providers/types';

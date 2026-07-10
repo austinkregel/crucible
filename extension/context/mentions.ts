@@ -4,7 +4,7 @@ export interface Mention {
   raw: string;
 }
 
-const MENTION_REGEX = /@([\w./\-]+)/g;
+const MENTION_REGEX = /@([\w./-]+)/g;
 
 /**
  * Parse @-mentions from user input.

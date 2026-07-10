@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import type { AgentTool, ToolResult, ToolAccessPolicy } from './types';
 import type { OrchestratorEventHandler } from '../orchestrator/types';
 import type { AuditLogger } from '../audit/logger';
-import { FileReadTool, FileWriteTool, FileEditTool, type PolicyProvider } from './fileReadWrite';
+import { FileReadTool, FileWriteTool, FileEditTool } from './fileReadWrite';
 import { CodeSearchTool } from './codeSearch';
 import { TerminalTool } from './terminal';
 import { ListFilesTool } from './listFiles';

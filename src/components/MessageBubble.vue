@@ -1,10 +1,9 @@
 <script setup lang="ts">
-import { computed } from 'vue';
 import type { ChatMessage } from '../stores/chat';
 import MarkdownRenderer from './MarkdownRenderer.vue';
 import ToolCallBlock from './ToolCallBlock.vue';
 
-const props = defineProps<{
+defineProps<{
   message: ChatMessage;
 }>();
 

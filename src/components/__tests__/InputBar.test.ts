@@ -12,7 +12,6 @@ vi.mock('../../composables/useVSCode', () => ({
 }));
 
 import InputBar from '../InputBar.vue';
-import PopoverSelect from '../PopoverSelect.vue';
 
 describe('InputBar', () => {
   beforeEach(() => {

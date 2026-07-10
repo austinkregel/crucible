@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 
 interface ActivityEntry {
   id: string;
@@ -13,7 +13,7 @@ interface ActivityEntry {
   content?: string;
 }
 
-const props = defineProps<{
+defineProps<{
   entries: ActivityEntry[];
   streamingThinking: string;
 }>();

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue';
+import { ref, computed, onUnmounted, watch } from 'vue';
 
 export interface PopoverOption {
   id: string;

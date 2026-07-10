@@ -3,7 +3,7 @@ import { ToolRunner } from '../runner';
 import { ASK_POLICY, createAgentPolicy } from '../policies';
 import { PermissionsManager } from '../../permissions';
 import { _configStore, window } from '../../__mocks__/vscode';
-import type { AgentTool, ToolResult } from '../types';
+import type { AgentTool } from '../types';
 
 function makeMockTool(name: string): AgentTool {
   return {
