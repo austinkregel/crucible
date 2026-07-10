@@ -59,7 +59,9 @@ export class Executor {
     let iteration = 0;
     let lastResponse = '';
     let consecutiveFailures = 0;
-    let anyToolSucceeded = false;
+    // The step is done when the model stops asking for tools. Bailing out early
+    // (abort, iteration cap, circuit breaker) is never a success.
+    let completedNaturally = false;
     const allFilesChanged: string[] = [];
     const fileSnapshots = new Map<string, string>();
     const diffs: string[] = [];
@@ -93,6 +95,7 @@ export class Executor {
 
         const toolCalls = parseToolCalls(fullResponse, validToolNames, this.auditLogger);
         if (toolCalls.length === 0 || !this.toolRunner) {
+          completedNaturally = true;
           break;
         }
 
@@ -119,7 +122,6 @@ export class Executor {
 
           if (result.success) {
             consecutiveFailures = 0;
-            anyToolSucceeded = true;
           } else {
             consecutiveFailures++;
             if (consecutiveFailures >= MAX_CONSECUTIVE_FAILURES) {
@@ -189,11 +191,24 @@ export class Executor {
 
     const filesFromResponse = extractFileReferences(lastResponse);
     const allFiles = [...new Set([...allFilesChanged, ...filesFromResponse])];
+    const diff = diffs.length > 0 ? diffs.join('\n\n') : undefined;
+
+    if (!completedNaturally) {
+      return {
+        stepId: step.id,
+        success: false,
+        error: signal?.aborted
+          ? 'Step aborted before completion'
+          : `Step did not converge within ${MAX_TOOL_ITERATIONS} tool iterations`,
+        diff,
+        filesChanged: allFiles,
+      };
+    }
 
     return {
       stepId: step.id,
-      success: anyToolSucceeded || allFilesChanged.length > 0,
-      diff: diffs.length > 0 ? diffs.join('\n\n') : undefined,
+      success: true,
+      diff,
       filesChanged: allFiles,
     };
   }

@@ -175,7 +175,11 @@ export class Orchestrator {
           step.status = result.success ? 'done' : 'failed';
           step.result = result.diff;
 
-          onEvent({ type: 'stepCompleted', data: result });
+          // executeStep signals failure by returning success:false, not by throwing.
+          onEvent({
+            type: result.success ? 'stepCompleted' : 'stepFailed',
+            data: result,
+          });
         } catch (err: any) {
           if (signal?.aborted) return;
           step.status = 'failed';
@@ -293,7 +297,11 @@ export class Orchestrator {
           step.status = result.success ? 'done' : 'failed';
           step.result = result.diff;
 
-          onEvent({ type: 'stepCompleted', data: result });
+          // executeStep signals failure by returning success:false, not by throwing.
+          onEvent({
+            type: result.success ? 'stepCompleted' : 'stepFailed',
+            data: result,
+          });
         } catch (err: any) {
           if (signal?.aborted) return;
           step.status = 'failed';

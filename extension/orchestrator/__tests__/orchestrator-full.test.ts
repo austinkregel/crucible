@@ -216,6 +216,57 @@ describe('Orchestrator', () => {
       expect(types).toContain('stepFailed');
     });
 
+    // Regression: executeStep signals failure by *returning* success:false (circuit
+    // breaker / error abort), it does not throw. The orchestrator only emitted
+    // stepFailed from its catch block, so failed steps were reported as
+    // stepCompleted -- which the webview renders as a green "done" step,
+    // swallowing the error entirely.
+    it('emits stepFailed (not stepCompleted) when a step returns success:false', async () => {
+      const failingProvider = {
+        streamChat: vi.fn(() => { throw new Error('Model unavailable'); }),
+      };
+      const registry = {
+        getByRole: vi.fn((role: string) =>
+          role === 'executor' ? { provider: failingProvider, model: 'm' } : undefined,
+        ),
+      } as any;
+
+      const plan: Plan = {
+        plan: 'Fail test',
+        steps: [{ id: 's1', goal: 'Broken step', files: [], risks: [], constraints: [], status: 'pending' }],
+        assumptions: [],
+      };
+
+      const orchestrator = new Orchestrator(registry, store as any);
+      await orchestrator.runAgentWithPlan(plan, (e) => events.push(e));
+
+      const types = events.map((e) => e.type);
+      expect(types).toContain('stepFailed');
+      expect(types).not.toContain('stepCompleted');
+      expect(plan.steps[0].status).toBe('failed');
+
+      const failure = events.find((e) => e.type === 'stepFailed');
+      expect(failure!.data.success).toBe(false);
+      expect(failure!.data.error).toBeTruthy();
+    });
+
+    it('emits stepCompleted (not stepFailed) when a step succeeds', async () => {
+      const registry = createFullRegistry([], [], ['Done, no tools needed.'], [makePostValidationJson()]);
+      const plan: Plan = {
+        plan: 'Happy path',
+        steps: [{ id: 's1', goal: 'Step', files: [], risks: [], constraints: [], status: 'pending' }],
+        assumptions: [],
+      };
+
+      const orchestrator = new Orchestrator(registry, store as any);
+      await orchestrator.runAgentWithPlan(plan, (e) => events.push(e));
+
+      const types = events.map((e) => e.type);
+      expect(types).toContain('stepCompleted');
+      expect(types).not.toContain('stepFailed');
+      expect(plan.steps[0].status).toBe('done');
+    });
+
     it('skips post-validation when disabled', async () => {
       _configStore['adversarial.postValidation'] = false;
 
