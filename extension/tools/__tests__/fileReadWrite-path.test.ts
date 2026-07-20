@@ -121,4 +121,80 @@ describe('FileEditTool', () => {
     expect(result.success).toBe(false);
     expect(result.error).toBe('Old text not found in file');
   });
+
+  it('fails loud when oldText is ambiguous (multiple matches)', async () => {
+    (vscode.workspace.findFiles as any).mockResolvedValue([
+      { fsPath: '/test-workspace/src/file.ts' },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'x = 1;\ny = 1;\nz = 1;',
+    });
+
+    const result = await tool.execute({ path: 'src/file.ts', oldText: '1', newText: '2' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('matches 3 locations');
+    expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+  });
+
+  it('replaceAll replaces every occurrence', async () => {
+    (vscode.workspace.findFiles as any).mockResolvedValue([
+      { fsPath: '/test-workspace/src/file.ts' },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'a a a',
+    });
+
+    const result = await tool.execute({
+      path: 'src/file.ts',
+      oldText: 'a',
+      newText: 'b',
+      replaceAll: true,
+    });
+
+    expect(result.success).toBe(true);
+    expect(result.output).toContain('Replaced 3 occurrence');
+    const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
+    expect(new TextDecoder().decode(written)).toBe('b b b');
+  });
+
+  it('occurrence targets only the Nth match', async () => {
+    (vscode.workspace.findFiles as any).mockResolvedValue([
+      { fsPath: '/test-workspace/src/file.ts' },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'a a a',
+    });
+
+    const result = await tool.execute({
+      path: 'src/file.ts',
+      oldText: 'a',
+      newText: 'b',
+      occurrence: 2,
+    });
+
+    expect(result.success).toBe(true);
+    const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
+    expect(new TextDecoder().decode(written)).toBe('a b a');
+  });
+
+  it('rejects out-of-range occurrence', async () => {
+    (vscode.workspace.findFiles as any).mockResolvedValue([
+      { fsPath: '/test-workspace/src/file.ts' },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'a a',
+    });
+
+    const result = await tool.execute({
+      path: 'src/file.ts',
+      oldText: 'a',
+      newText: 'b',
+      occurrence: 5,
+    });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('out of range');
+    expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
+  });
 });

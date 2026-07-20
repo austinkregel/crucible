@@ -4,6 +4,7 @@ import { ContextCompiler } from '../context/compiler';
 import { ContextCollector } from '../context/collector';
 import { CacheStore } from '../cache/store';
 import { RollingMemory } from '../cache/rollingMemory';
+import type { ProjectGrounding } from '../context/projectGrounding';
 import { Planner } from './planner';
 import { Validator } from './validator';
 import { Executor } from './executor';
@@ -26,13 +27,14 @@ export class Orchestrator {
     private registry: ProviderRegistry,
     store: CacheStore,
     toolRunner?: ToolRunner,
+    grounding?: ProjectGrounding,
   ) {
     this.rollingMemory = new RollingMemory(store);
-    const compiler = new ContextCompiler(this.rollingMemory);
+    const compiler = new ContextCompiler(this.rollingMemory, grounding);
     this.planner = new Planner(registry, compiler);
     this.validator = new Validator(registry, compiler);
     this.executor = new Executor(registry, compiler, toolRunner);
-    this.postValidator = new PostValidator(registry);
+    this.postValidator = new PostValidator(registry, grounding);
     this.collector = new ContextCollector(store);
   }
 

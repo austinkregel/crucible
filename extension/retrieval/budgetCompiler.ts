@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import type { RetrievedChunk } from './retriever';
 import type { CollectedContext, ContextFile } from '../context/collector';
 import type { RollingMemory } from '../cache/rollingMemory';
+import type { ProjectGrounding } from '../context/projectGrounding';
+import { composeSystemPrefix } from '../context/systemPrompt';
 import { estimateTokens } from '../utils/tokens';
 
 /** Priority tiers, lower number = higher priority */
@@ -49,6 +51,7 @@ export class BudgetCompiler {
     retrievedChunks?: RetrievedChunk[];
     collectedContext?: CollectedContext;
     rollingMemory?: RollingMemory;
+    grounding?: ProjectGrounding;
     systemInstructions?: string;
     maxContextTokens?: number;
   }): BudgetResult {
@@ -59,14 +62,18 @@ export class BudgetCompiler {
 
     // --- P0: Always include ---
 
-    const systemParts: string[] = [
-      'You are Crucible, an expert AI coding assistant.',
-      'You help users understand, modify, and create code.',
-      'Be concise, accurate, and reference specific code when relevant.',
-    ];
+    const systemPrefix = composeSystemPrefix({
+      roleInstructions: opts.systemInstructions,
+    });
 
-    if (opts.systemInstructions) {
-      systemParts.push(opts.systemInstructions);
+    const groundingSection = opts.grounding?.toPromptSection();
+    if (groundingSection) {
+      items.push({
+        priority: Priority.P0_ALWAYS,
+        label: 'Project Grounding',
+        content: groundingSection,
+        tokens: estimateTokens(groundingSection),
+      });
     }
 
     if (opts.rollingMemory) {
@@ -137,7 +144,6 @@ export class BudgetCompiler {
 
     // --- Fill budget ---
 
-    const systemPrefix = systemParts.join('\n\n');
     const systemTokens = estimateTokens(systemPrefix);
     let remaining = budget - systemTokens;
 

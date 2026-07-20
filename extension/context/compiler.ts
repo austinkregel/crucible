@@ -1,5 +1,7 @@
 import type { CollectedContext, ContextFile } from './collector';
 import type { RollingMemory } from '../cache/rollingMemory';
+import type { ProjectGrounding } from './projectGrounding';
+import { composeSystemPrefix } from './systemPrompt';
 
 export interface CompiledPrompt {
   systemPrefix: string;
@@ -18,9 +20,11 @@ export interface CompiledPrompt {
  */
 export class ContextCompiler {
   private rollingMemory?: RollingMemory;
+  private grounding?: ProjectGrounding;
 
-  constructor(rollingMemory?: RollingMemory) {
+  constructor(rollingMemory?: RollingMemory, grounding?: ProjectGrounding) {
     this.rollingMemory = rollingMemory;
+    this.grounding = grounding;
   }
 
   compile(
@@ -28,25 +32,11 @@ export class ContextCompiler {
     context: CollectedContext,
     additionalInstructions?: string,
   ): CompiledPrompt {
-    const systemParts: string[] = [
-      'You are Crucible, an expert AI coding assistant.',
-      'You help users understand, modify, and create code.',
-      'Be concise, accurate, and reference specific code when relevant.',
-    ];
-
-    if (additionalInstructions) {
-      systemParts.push(additionalInstructions);
-    }
-
-    // Add rolling memory / project knowledge
-    if (this.rollingMemory) {
-      const memorySection = this.rollingMemory.toPromptSection();
-      if (memorySection) {
-        systemParts.push(memorySection);
-      }
-    }
-
-    const systemPrefix = systemParts.join('\n\n');
+    const systemPrefix = composeSystemPrefix({
+      grounding: this.grounding?.toPromptSection(),
+      roleInstructions: additionalInstructions,
+      rollingMemory: this.rollingMemory?.toPromptSection(),
+    });
 
     const userParts: string[] = [];
 
@@ -103,8 +93,13 @@ export class ContextCompiler {
       '- Reuse existing functions where possible',
     ];
 
+    const systemPrefix = composeSystemPrefix({
+      base: 'You are a precise code executor. Implement exactly what is asked, nothing more.',
+      grounding: this.grounding?.toPromptSection(),
+    });
+
     return {
-      systemPrefix: 'You are a precise code executor. Implement exactly what is asked, nothing more.',
+      systemPrefix,
       userMessage: parts.join('\n\n'),
       estimatedTokens: Math.ceil(parts.join('').length / 4),
     };
