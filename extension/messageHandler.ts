@@ -128,6 +128,7 @@ async function initIndexer(context: vscode.ExtensionContext) {
   try {
     indexManager = new IndexManager(workspacePath, ollamaBaseUrl);
     retriever = new Retriever(indexManager.getEmbedder(), indexManager.getVectorStore());
+    orchestrator.setRetrieval(retriever);
 
     indexManager.onStatusChange((status) => {
       currentView?.webview.postMessage({ type: 'indexStatus', status });

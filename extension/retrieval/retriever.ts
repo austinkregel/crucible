@@ -172,13 +172,17 @@ export class Retriever {
  */
 export function getRecentFiles(): string[] {
   const recent: string[] = [];
-  for (const tabGroup of vscode.window.tabGroups.all) {
-    for (const tab of tabGroup.tabs) {
-      const input = tab.input as { uri?: vscode.Uri } | undefined;
-      if (input?.uri) {
-        recent.push(input.uri.fsPath);
+  try {
+    for (const tabGroup of vscode.window.tabGroups?.all ?? []) {
+      for (const tab of tabGroup.tabs) {
+        const input = tab.input as { uri?: vscode.Uri } | undefined;
+        if (input?.uri) {
+          recent.push(input.uri.fsPath);
+        }
       }
     }
+  } catch {
+    // Editor surface not available (e.g. headless/test) -- recency is optional.
   }
   return recent;
 }

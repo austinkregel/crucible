@@ -112,6 +112,38 @@ describe('ContextCollector', () => {
     expect(result.files).toHaveLength(0);
   });
 
+  it('resolves @symbol mentions via the workspace symbol provider', async () => {
+    (vscode.commands.executeCommand as any).mockResolvedValue([
+      {
+        name: 'MyClass',
+        location: {
+          uri: { fsPath: '/test-workspace/src/my.ts', path: '/test-workspace/src/my.ts' },
+          range: { start: { line: 4 }, end: { line: 4 } },
+        },
+      },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'l1\nl2\nl3\nl4\nclass MyClass {}\nl6',
+      uri: { fsPath: '/test-workspace/src/my.ts' },
+      languageId: 'typescript',
+    });
+
+    const result = await collector.collect('explain @MyClass');
+    expect(result.mentions[0].type).toBe('symbol');
+    expect(result.files).toHaveLength(1);
+    expect(result.files[0].path).toBe('src/my.ts:5');
+    expect(result.files[0].content).toContain('class MyClass {}');
+  });
+
+  it('drops @symbol mentions gracefully when nothing resolves', async () => {
+    (vscode.commands.executeCommand as any).mockResolvedValue([]);
+    (vscode.workspace.findFiles as any).mockResolvedValue([]);
+
+    const result = await collector.collect('what is @Unknownthing');
+    expect(result.mentions[0].type).toBe('symbol');
+    expect(result.files).toHaveLength(0);
+  });
+
   it('uses summary for large file content (>3000 chars) from resolved files', async () => {
     const largeContent = 'a'.repeat(4000);
     (vscode.workspace.findFiles as any).mockResolvedValue([

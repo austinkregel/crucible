@@ -2,9 +2,12 @@ import * as vscode from 'vscode';
 import type { ProviderRegistry } from '../providers/registry';
 import { ContextCompiler } from '../context/compiler';
 import { ContextCollector } from '../context/collector';
+import type { CollectedContext } from '../context/collector';
 import { CacheStore } from '../cache/store';
 import { RollingMemory } from '../cache/rollingMemory';
 import type { ProjectGrounding } from '../context/projectGrounding';
+import type { Retriever } from '../retrieval/retriever';
+import { getRecentFiles } from '../retrieval/retriever';
 import { Planner } from './planner';
 import { Validator } from './validator';
 import { Executor } from './executor';
@@ -15,6 +18,11 @@ import type { AuditLogger } from '../audit/logger';
 import type { ModelRole } from '../providers/types';
 import { OllamaProvider } from '../providers/ollama';
 
+/** Bounds on semantic-retrieval augmentation (this path has no token budget). */
+const RETRIEVAL_PLANNING_LIMIT = 6;
+const RETRIEVAL_EXECUTION_LIMIT = 4;
+const RETRIEVAL_CHUNK_CHAR_CAP = 1500;
+
 export class Orchestrator {
   private planner: Planner;
   private validator: Validator;
@@ -22,6 +30,7 @@ export class Orchestrator {
   private postValidator: PostValidator;
   private collector: ContextCollector;
   private rollingMemory: RollingMemory;
+  private retriever?: Retriever;
 
   constructor(
     private registry: ProviderRegistry,
@@ -40,6 +49,53 @@ export class Orchestrator {
 
   setAuditLogger(logger: AuditLogger): void {
     this.executor.setAuditLogger(logger);
+  }
+
+  /**
+   * Wire in semantic retrieval. Optional and set late (the retriever is only
+   * built once indexing initializes), so every use is guarded and best-effort.
+   */
+  setRetrieval(retriever: Retriever): void {
+    this.retriever = retriever;
+  }
+
+  /**
+   * Append semantically-retrieved code chunks to a collected context so the
+   * planner/validator/executor see relevant code the user never @mentioned.
+   * Mutates context.files in place; bounded in count and per-chunk size
+   * because this prompt path has no budget enforcement. Never throws --
+   * retrieval failure must not break orchestration.
+   */
+  private async augmentWithRetrieval(
+    query: string,
+    context: CollectedContext,
+    limit: number,
+  ): Promise<void> {
+    if (!this.retriever) return;
+
+    let chunks;
+    try {
+      chunks = await this.retriever.retrieve(query, {
+        limit,
+        activeFilePath: vscode.window.activeTextEditor?.document.uri.fsPath,
+        mentions: context.mentions,
+        recentFiles: getRecentFiles(),
+      });
+    } catch {
+      return;
+    }
+
+    const seen = new Set(context.files.map((f) => f.path));
+    for (const chunk of chunks) {
+      const label = `${chunk.relativePath}:${chunk.lineStart}-${chunk.lineEnd}`;
+      if (seen.has(label)) continue;
+      seen.add(label);
+      context.files.push({
+        path: label,
+        content: capChars(chunk.content, RETRIEVAL_CHUNK_CHAR_CAP),
+        language: chunk.language,
+      });
+    }
   }
 
   /**
@@ -95,6 +151,7 @@ export class Orchestrator {
 
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
+      await this.augmentWithRetrieval(userQuery, context, RETRIEVAL_PLANNING_LIMIT);
 
       if (signal?.aborted) return;
       onEvent({ type: 'phaseStarted', data: { phase: 'planning' } });
@@ -168,6 +225,7 @@ export class Orchestrator {
 
         try {
           const stepContext = await this.collector.collect(step.goal, step.files);
+          await this.augmentWithRetrieval(step.goal, stepContext, RETRIEVAL_EXECUTION_LIMIT);
           const relevantCode = stepContext.files
             .map((f) => `### ${f.path}\n${f.content || f.summary || '(not available)'}`)
             .join('\n\n');
@@ -236,6 +294,7 @@ export class Orchestrator {
 
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
+      await this.augmentWithRetrieval(userQuery, context, RETRIEVAL_PLANNING_LIMIT);
 
       // Phase 1: Planning
       if (signal?.aborted) return;
@@ -290,6 +349,7 @@ export class Orchestrator {
 
         try {
           const stepContext = await this.collector.collect(step.goal, step.files);
+          await this.augmentWithRetrieval(step.goal, stepContext, RETRIEVAL_EXECUTION_LIMIT);
           const relevantCode = stepContext.files
             .map((f) => `### ${f.path}\n${f.content || f.summary || '(not available)'}`)
             .join('\n\n');
@@ -337,4 +397,10 @@ export class Orchestrator {
       onEvent({ type: 'error', data: { message: err.message } });
     }
   }
+}
+
+/** Truncate a retrieved chunk to a char budget with an explicit marker. */
+function capChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars).trimEnd()}\n… (truncated)`;
 }

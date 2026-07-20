@@ -57,6 +57,60 @@ describe('Orchestrator pipeline events', () => {
     expect(planGeneratedAt).toBeGreaterThan(planningPhaseAt);
   });
 
+  function planningRegistry() {
+    return {
+      getByRole: vi.fn((role: string) => {
+        switch (role) {
+          case 'planner':
+            return { provider: providerYielding('{"plan":"test","steps":[],"assumptions":[]}'), model: 'm' };
+          case 'validator':
+            return {
+              provider: providerYielding(
+                '{"issues":[],"missing_cases":[],"conflicts":[],"confidence_score":0.9}',
+              ),
+              model: 'm',
+            };
+          default:
+            return { provider: providerYielding('done'), model: 'm' };
+        }
+      }),
+    } as any;
+  }
+
+  it('runAgent queries the retriever during planning when wired', async () => {
+    const orchestrator = new Orchestrator(planningRegistry(), new MockCacheStore() as any);
+    const retriever = {
+      retrieve: vi.fn().mockResolvedValue([
+        {
+          relativePath: 'src/util.ts',
+          filePath: '/ws/src/util.ts',
+          lineStart: 1,
+          lineEnd: 10,
+          content: 'export const helper = () => {}',
+          contextualizedText: '',
+          entities: '',
+          language: 'typescript',
+          score: 0.9,
+        },
+      ]),
+    } as any;
+    orchestrator.setRetrieval(retriever);
+
+    await orchestrator.runAgent('Add a helper', [], onEvent);
+
+    expect(retriever.retrieve).toHaveBeenCalledWith('Add a helper', expect.objectContaining({ limit: 6 }));
+  });
+
+  it('runAgent still completes when retrieval throws (best-effort)', async () => {
+    const orchestrator = new Orchestrator(planningRegistry(), new MockCacheStore() as any);
+    orchestrator.setRetrieval({ retrieve: vi.fn().mockRejectedValue(new Error('index down')) } as any);
+
+    await orchestrator.runAgent('Add a helper', [], onEvent);
+
+    expect(events.some((e) => e.type === 'planGenerated')).toBe(true);
+    expect(events.some((e) => e.type === 'error')).toBe(false);
+  });
+
   it('all streamToken events include role field', () => {
     // This is tested via the individual component tests (planner, validator, executor)
     // The contract is: streamToken.data MUST have { role: string, token: string }
