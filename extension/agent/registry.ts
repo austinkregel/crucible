@@ -1,4 +1,5 @@
 import type { ToolAccessPolicy } from '../tools/types';
+import { loadAgentProfiles } from './profileLoader';
 
 export type AgentMode = 'primary' | 'subagent';
 
@@ -156,6 +157,22 @@ export class AgentRegistry {
 
   register(profile: AgentProfile): void {
     this.profiles.set(profile.name, profile);
+  }
+
+  /**
+   * Load user-defined agent profiles from disk (.claude/agents, .crucible/agents)
+   * and register them. File profiles override a built-in of the same name (with
+   * a warning). Returns human-readable warnings for the caller to surface/log.
+   */
+  loadUserProfiles(): string[] {
+    const { profiles, warnings } = loadAgentProfiles(this.workspaceRoot);
+    for (const profile of profiles) {
+      if (BUILTIN_PROFILES[profile.name]) {
+        warnings.push(`Custom agent "${profile.name}" overrides the built-in agent of the same name.`);
+      }
+      this.register(profile);
+    }
+    return warnings;
   }
 
   getSubagentDescriptions(): string {

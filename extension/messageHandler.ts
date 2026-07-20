@@ -74,6 +74,11 @@ async function ensureInitialized(context: vscode.ExtensionContext) {
   }
 
   agentRegistry = new AgentRegistry(wsRoot);
+  // Load user-defined agent profiles before TaskTool is built, so spawn_agent
+  // advertises them (it snapshots subagent descriptions at construction).
+  for (const warning of agentRegistry.loadUserProfiles()) {
+    console.warn(`[Crucible] ${warning}`);
+  }
   subAgentRunner = new SubAgentRunner(agentRegistry, toolRunner);
   subAgentRunner.setAuditLogger(auditLogger);
 
