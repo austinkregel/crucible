@@ -83,6 +83,17 @@ const commands = {
   executeCommand: vi.fn(),
 };
 
+enum DiagnosticSeverity {
+  Error = 0,
+  Warning = 1,
+  Information = 2,
+  Hint = 3,
+}
+
+const languages = {
+  getDiagnostics: vi.fn(() => [] as any),
+};
+
 const EventEmitter = vi.fn().mockImplementation(() => ({
   event: vi.fn(),
   fire: vi.fn(),
@@ -100,6 +111,8 @@ export {
   window,
   Uri,
   commands,
+  languages,
+  DiagnosticSeverity,
   EventEmitter,
   Disposable,
   _configStore,
@@ -110,6 +123,8 @@ export default {
   window,
   Uri,
   commands,
+  languages,
+  DiagnosticSeverity,
   EventEmitter,
   Disposable,
 };

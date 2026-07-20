@@ -86,4 +86,71 @@ describe('TerminalTool', () => {
 
     expect(cp.exec).toHaveBeenCalled();
   });
+
+  it('defaults to the configured command timeout and 8MB buffer', async () => {
+    let seen: any;
+    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: (...args: any[]) => void) => {
+      seen = opts;
+      cb(null, 'ok', '');
+    });
+
+    await tool.execute({ command: 'npm test' });
+
+    expect(seen.timeout).toBe(120_000);
+    expect(seen.maxBuffer).toBe(8 * 1024 * 1024);
+  });
+
+  it('clamps an over-ceiling timeoutMs down to the ceiling', async () => {
+    let seen: any;
+    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: (...args: any[]) => void) => {
+      seen = opts;
+      cb(null, 'ok', '');
+    });
+
+    await tool.execute({ command: 'npm test', timeoutMs: 5_000_000 });
+
+    expect(seen.timeout).toBe(600_000);
+  });
+
+  it('honors a per-call timeoutMs within range', async () => {
+    let seen: any;
+    (cp.exec as any).mockImplementation((_cmd: string, opts: any, cb: (...args: any[]) => void) => {
+      seen = opts;
+      cb(null, 'ok', '');
+    });
+
+    await tool.execute({ command: 'npm test', timeoutMs: 45_000 });
+
+    expect(seen.timeout).toBe(45_000);
+  });
+
+  it('reports a timeout error when the process is killed', async () => {
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) => {
+      const err: any = new Error('killed');
+      err.killed = true;
+      err.signal = 'SIGTERM';
+      cb(err, 'partial', '');
+    });
+
+    const result = await tool.execute({ command: 'sleep 999' });
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain('timed out');
+    expect(result.output).toBe('partial');
+  });
+
+  it('truncates very long output keeping head and tail', async () => {
+    const big = Array.from({ length: 1500 }, (_, i) => `line${i}`).join('\n');
+    (cp.exec as any).mockImplementation((_cmd: string, _opts: any, cb: (...args: any[]) => void) =>
+      cb(null, big, ''),
+    );
+
+    const result = await tool.execute({ command: 'noisy' });
+
+    expect(result.output).toContain('line0');
+    expect(result.output).toContain('line1499');
+    expect(result.output).toContain('500 lines omitted');
+    // Head is lines 0-199, tail is lines 700-1499; line400 is in the dropped middle.
+    expect(result.output).not.toContain('line400');
+  });
 });

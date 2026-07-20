@@ -56,7 +56,7 @@ const GENERAL_SYSTEM_PROMPT = `You are a general-purpose agent for researching c
 Your goal is to autonomously complete the task described in the prompt. Work through it step by step, using available tools as needed. Return a clear, concise summary of your findings or results.`;
 
 const EXPLORE_POLICY: ToolAccessPolicy = {
-  allowedTools: ['read_file', 'list_files', 'search_code'],
+  allowedTools: ['read_file', 'list_files', 'search_code', 'get_diagnostics'],
   terminalAllowed: false,
 };
 
@@ -66,7 +66,7 @@ const COMPACTION_POLICY: ToolAccessPolicy = {
 };
 
 const GENERAL_POLICY: ToolAccessPolicy = {
-  allowedTools: ['read_file', 'list_files', 'search_code', 'run_command'],
+  allowedTools: ['read_file', 'list_files', 'search_code', 'run_command', 'get_diagnostics'],
   terminalAllowed: true,
   requireApproval: { run_command: true },
 };
@@ -75,7 +75,7 @@ function createBuildPolicy(workspaceRoot: string): ToolAccessPolicy {
   return {
     allowedTools: [
       'read_file', 'write_file', 'edit_file',
-      'list_files', 'search_code', 'run_command',
+      'list_files', 'search_code', 'run_command', 'get_diagnostics',
     ],
     fileWritePaths: [`${workspaceRoot}/**`],
     fileReadPaths: [`${workspaceRoot}/**`],
@@ -94,14 +94,14 @@ const BUILTIN_PROFILES: Record<string, Omit<AgentProfile, 'policy'> & { policy?:
     description: 'The default agent. Executes tools based on configured permissions.',
     mode: 'primary',
     systemPrompt: BUILD_SYSTEM_PROMPT,
-    allowedTools: ['read_file', 'write_file', 'edit_file', 'list_files', 'search_code', 'run_command'],
+    allowedTools: ['read_file', 'write_file', 'edit_file', 'list_files', 'search_code', 'run_command', 'get_diagnostics'],
   },
   explore: {
     name: 'explore',
     description: 'Fast agent specialized for exploring codebases. Use this when you need to quickly find files by patterns, search code for keywords, or answer questions about the codebase. When calling this agent, specify the desired thoroughness level: "quick" for basic searches, "medium" for moderate exploration, or "very thorough" for comprehensive analysis.',
     mode: 'subagent',
     systemPrompt: EXPLORE_SYSTEM_PROMPT,
-    allowedTools: ['read_file', 'list_files', 'search_code'],
+    allowedTools: ['read_file', 'list_files', 'search_code', 'get_diagnostics'],
     policy: EXPLORE_POLICY,
   },
   general: {
@@ -109,7 +109,7 @@ const BUILTIN_PROFILES: Record<string, Omit<AgentProfile, 'policy'> & { policy?:
     description: 'General-purpose agent for researching complex questions and executing multi-step tasks. Use this agent to execute multiple units of work in parallel.',
     mode: 'subagent',
     systemPrompt: GENERAL_SYSTEM_PROMPT,
-    allowedTools: ['read_file', 'list_files', 'search_code', 'run_command'],
+    allowedTools: ['read_file', 'list_files', 'search_code', 'run_command', 'get_diagnostics'],
     policy: GENERAL_POLICY,
   },
   compaction: {

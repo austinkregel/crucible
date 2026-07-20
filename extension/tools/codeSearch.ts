@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
+import * as path from 'path';
 import type { AgentTool, ToolResult } from './types';
+import { checkPathAgainstPolicy, type PolicyProvider } from './pathUtils';
 
 export class CodeSearchTool implements AgentTool {
   name = 'search_code';
@@ -24,6 +26,12 @@ export class CodeSearchTool implements AgentTool {
     required: ['pattern'],
   };
 
+  private getPolicy: PolicyProvider;
+
+  constructor(policyProvider?: PolicyProvider) {
+    this.getPolicy = policyProvider ?? (() => null);
+  }
+
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const pattern = args.pattern as string;
     const glob = args.glob as string | undefined;
@@ -43,6 +51,8 @@ export class CodeSearchTool implements AgentTool {
     cmd += ` --glob "!node_modules" --glob "!.git" --glob "!dist"`;
     cmd += ` "${pattern.replace(/"/g, '\\"')}"`;
 
+    const readPaths = this.getPolicy()?.fileReadPaths;
+
     return new Promise((resolve) => {
       cp.exec(cmd, { cwd, timeout: 10_000, maxBuffer: 512 * 1024 }, (err, stdout, stderr) => {
         if (err && !stdout) {
@@ -53,9 +63,21 @@ export class CodeSearchTool implements AgentTool {
             resolve({ success: false, output: '', error: stderr || err.message });
           }
         } else {
-          resolve({ success: true, output: stdout.trim() });
+          resolve({ success: true, output: filterByReadPolicy(stdout.trim(), cwd, readPaths) });
         }
       });
     });
   }
+}
+
+/** Drop ripgrep result lines whose file is outside the policy's read paths. */
+function filterByReadPolicy(output: string, cwd: string, readPaths: string[] | undefined): string {
+  if (!output || !readPaths || readPaths.length === 0) return output;
+  const kept = output.split('\n').filter((line) => {
+    const m = line.match(/^(.+?):\d+:/);
+    if (!m) return true; // keep non-result lines (e.g. context separators)
+    const abs = path.isAbsolute(m[1]) ? m[1] : path.join(cwd, m[1]);
+    return checkPathAgainstPolicy(abs, readPaths, 'read').allowed;
+  });
+  return kept.join('\n');
 }

@@ -1,68 +1,13 @@
 import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
-import picomatch from 'picomatch';
-import type { AgentTool, ToolResult, ToolAccessPolicy } from './types';
+import type { AgentTool, ToolResult } from './types';
+import {
+  validatePath,
+  getWorkspaceRoot,
+  checkPathAgainstPolicy,
+  type PolicyProvider,
+} from './pathUtils';
 
-/**
- * Resolve and validate that a file path is within the workspace root.
- * Resolves symlinks and normalizes path traversal before checking.
- */
-function validatePath(filePath: string, workspaceRoot: string, requireWrite = false): { valid: boolean; resolved: string; error?: string } {
-  const absolute = path.isAbsolute(filePath)
-    ? path.normalize(filePath)
-    : path.normalize(path.join(workspaceRoot, filePath));
-
-  // Resolve symlinks to prevent escape via symlinked dirs
-  let resolved: string;
-  try {
-    const dir = path.dirname(absolute);
-    if (fs.existsSync(dir)) {
-      resolved = path.join(fs.realpathSync(dir), path.basename(absolute));
-    } else {
-      resolved = absolute;
-    }
-  } catch {
-    resolved = absolute;
-  }
-
-  const normalizedRoot = path.normalize(workspaceRoot);
-
-  if (!resolved.startsWith(normalizedRoot + path.sep) && resolved !== normalizedRoot) {
-    const action = requireWrite ? 'write' : 'read';
-    return {
-      valid: false,
-      resolved,
-      error: `Cannot ${action} "${filePath}": path resolves outside workspace (${resolved})`,
-    };
-  }
-
-  return { valid: true, resolved };
-}
-
-function getWorkspaceRoot(): string | null {
-  const folders = vscode.workspace.workspaceFolders;
-  return folders?.[0]?.uri.fsPath ?? null;
-}
-
-export type PolicyProvider = () => ToolAccessPolicy | null;
-
-function checkPathAgainstPolicy(
-  resolvedPath: string,
-  globs: string[] | undefined,
-  action: 'read' | 'write',
-): { allowed: boolean; error?: string } {
-  if (!globs || globs.length === 0) return { allowed: true };
-
-  const isMatch = picomatch(globs, { dot: true });
-  if (!isMatch(resolvedPath)) {
-    return {
-      allowed: false,
-      error: `Cannot ${action} "${resolvedPath}": path not allowed by policy (permitted: ${globs.join(', ')})`,
-    };
-  }
-  return { allowed: true };
-}
+export type { PolicyProvider };
 
 export class FileReadTool implements AgentTool {
   name = 'read_file';

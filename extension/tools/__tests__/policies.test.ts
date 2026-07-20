@@ -5,7 +5,7 @@ import { _configStore } from '../../__mocks__/vscode';
 describe('ToolAccessPolicy definitions', () => {
   describe('ASK_POLICY', () => {
     it('only allows read-only tools', () => {
-      expect(ASK_POLICY.allowedTools).toEqual(['read_file', 'list_files', 'search_code']);
+      expect(ASK_POLICY.allowedTools).toEqual(['read_file', 'list_files', 'search_code', 'get_diagnostics']);
     });
 
     it('does not allow terminal access', () => {
@@ -36,6 +36,7 @@ describe('ToolAccessPolicy definitions', () => {
       expect(policy.allowedTools).toContain('run_command');
       expect(policy.allowedTools).toContain('list_files');
       expect(policy.allowedTools).toContain('search_code');
+      expect(policy.allowedTools).toContain('get_diagnostics');
     });
 
     it('allows terminal access', () => {
