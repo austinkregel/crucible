@@ -219,6 +219,12 @@
           "default": true,
           "description": "Require user approval before running terminal commands"
         },
+        "crucible.terminal.maxCommandDurationMs": {
+          "type": "number",
+          "default": 120000,
+          "maximum": 600000,
+          "description": "Default timeout in milliseconds for run_command (builds/tests). Clamped to a 600000ms ceiling; a per-call timeoutMs can override up to the ceiling."
+        },
         "crucible.indexing.enabled": {
           "type": "boolean",
           "default": true,

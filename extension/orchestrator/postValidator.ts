@@ -1,9 +1,14 @@
 import type { ProviderRegistry } from '../providers/registry';
 import type { ChatMessage } from '../providers/types';
+import type { ProjectGrounding } from '../context/projectGrounding';
+import { composeSystemPrefix } from '../context/systemPrompt';
 import type { Plan, PostValidationResult, ExecutionResult, OrchestratorEventHandler } from './types';
 
 export class PostValidator {
-  constructor(private registry: ProviderRegistry) {}
+  constructor(
+    private registry: ProviderRegistry,
+    private grounding?: ProjectGrounding,
+  ) {}
 
   async validate(
     originalPlan: Plan,
@@ -38,7 +43,10 @@ Review the implementation against the original plan. Respond with JSON:
     const messages: ChatMessage[] = [
       {
         role: 'system',
-        content: 'You are a code reviewer. Validate implementation against the plan.',
+        content: composeSystemPrefix({
+          base: 'You are a code reviewer. Validate implementation against the plan.',
+          grounding: this.grounding?.toPromptSection(),
+        }),
       },
       { role: 'user', content: prompt },
     ];

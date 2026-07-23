@@ -2,8 +2,12 @@ import * as vscode from 'vscode';
 import type { ProviderRegistry } from '../providers/registry';
 import { ContextCompiler } from '../context/compiler';
 import { ContextCollector } from '../context/collector';
+import type { CollectedContext, ContextFile } from '../context/collector';
 import { CacheStore } from '../cache/store';
 import { RollingMemory } from '../cache/rollingMemory';
+import type { ProjectGrounding } from '../context/projectGrounding';
+import type { Retriever, RetrievedChunk } from '../retrieval/retriever';
+import { getRecentFiles } from '../retrieval/retriever';
 import { Planner } from './planner';
 import { Validator } from './validator';
 import { Executor } from './executor';
@@ -14,6 +18,11 @@ import type { AuditLogger } from '../audit/logger';
 import type { ModelRole } from '../providers/types';
 import { OllamaProvider } from '../providers/ollama';
 
+/** Bounds on semantic-retrieval augmentation (this path has no token budget). */
+const RETRIEVAL_PLANNING_LIMIT = 6;
+const RETRIEVAL_EXECUTION_LIMIT = 4;
+const RETRIEVAL_CHUNK_CHAR_CAP = 1500;
+
 export class Orchestrator {
   private planner: Planner;
   private validator: Validator;
@@ -21,23 +30,68 @@ export class Orchestrator {
   private postValidator: PostValidator;
   private collector: ContextCollector;
   private rollingMemory: RollingMemory;
+  private retriever?: Retriever;
 
   constructor(
     private registry: ProviderRegistry,
     store: CacheStore,
     toolRunner?: ToolRunner,
+    grounding?: ProjectGrounding,
   ) {
     this.rollingMemory = new RollingMemory(store);
-    const compiler = new ContextCompiler(this.rollingMemory);
+    const compiler = new ContextCompiler(this.rollingMemory, grounding);
     this.planner = new Planner(registry, compiler);
     this.validator = new Validator(registry, compiler);
     this.executor = new Executor(registry, compiler, toolRunner);
-    this.postValidator = new PostValidator(registry);
+    this.postValidator = new PostValidator(registry, grounding);
     this.collector = new ContextCollector(store);
   }
 
   setAuditLogger(logger: AuditLogger): void {
     this.executor.setAuditLogger(logger);
+  }
+
+  /**
+   * Wire in semantic retrieval. Optional and set late (the retriever is only
+   * built once indexing initializes), so every use is guarded and best-effort.
+   */
+  setRetrieval(retriever: Retriever): void {
+    this.retriever = retriever;
+  }
+
+  /**
+   * Append semantically-retrieved code chunks to a collected context so the
+   * planner/validator/executor see relevant code the user never @mentioned.
+   * Mutates context.files in place; bounded in count and per-chunk size
+   * because this prompt path has no budget enforcement. Never throws --
+   * retrieval failure must not break orchestration.
+   */
+  private async augmentWithRetrieval(
+    query: string,
+    context: CollectedContext,
+    limit: number,
+  ): Promise<void> {
+    if (!this.retriever) return;
+
+    let chunks;
+    try {
+      chunks = await this.retriever.retrieve(query, {
+        limit,
+        activeFilePath: vscode.window.activeTextEditor?.document.uri.fsPath,
+        mentions: context.mentions,
+        recentFiles: getRecentFiles(),
+      });
+    } catch {
+      return;
+    }
+
+    context.files.push(
+      ...selectNewRetrievalFiles(
+        context.files.map((f) => f.path),
+        chunks,
+        RETRIEVAL_CHUNK_CHAR_CAP,
+      ),
+    );
   }
 
   /**
@@ -93,6 +147,7 @@ export class Orchestrator {
 
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
+      await this.augmentWithRetrieval(userQuery, context, RETRIEVAL_PLANNING_LIMIT);
 
       if (signal?.aborted) return;
       onEvent({ type: 'phaseStarted', data: { phase: 'planning' } });
@@ -166,6 +221,7 @@ export class Orchestrator {
 
         try {
           const stepContext = await this.collector.collect(step.goal, step.files);
+          await this.augmentWithRetrieval(step.goal, stepContext, RETRIEVAL_EXECUTION_LIMIT);
           const relevantCode = stepContext.files
             .map((f) => `### ${f.path}\n${f.content || f.summary || '(not available)'}`)
             .join('\n\n');
@@ -234,6 +290,7 @@ export class Orchestrator {
 
       if (signal?.aborted) return;
       const context = await this.collector.collect(userQuery, additionalPaths);
+      await this.augmentWithRetrieval(userQuery, context, RETRIEVAL_PLANNING_LIMIT);
 
       // Phase 1: Planning
       if (signal?.aborted) return;
@@ -288,6 +345,7 @@ export class Orchestrator {
 
         try {
           const stepContext = await this.collector.collect(step.goal, step.files);
+          await this.augmentWithRetrieval(step.goal, stepContext, RETRIEVAL_EXECUTION_LIMIT);
           const relevantCode = stepContext.files
             .map((f) => `### ${f.path}\n${f.content || f.summary || '(not available)'}`)
             .join('\n\n');
@@ -335,4 +393,48 @@ export class Orchestrator {
       onEvent({ type: 'error', data: { message: err.message } });
     }
   }
+}
+
+/** Truncate a retrieved chunk to a char budget with an explicit marker. */
+function capChars(text: string, maxChars: number): string {
+  if (text.length <= maxChars) return text;
+  return `${text.slice(0, maxChars).trimEnd()}\n… (truncated)`;
+}
+
+/** Strip a trailing ":line" or ":start-end" locator so retrieved chunks dedup
+ * against the bare file path the collector produced (e.g. "src/a.ts:5"). */
+function stripLineSuffix(filePath: string): string {
+  return filePath.replace(/:\d+(?:-\d+)?$/, '');
+}
+
+/**
+ * Pick which retrieved chunks to append to a context, dropping any whose file
+ * the collector already surfaced and any exact-duplicate chunk range. Without
+ * this a chunk of an already-collected file was appended as a second copy of
+ * the same code — pure token waste on a prompt path with no budget. Kept pure
+ * (no orchestrator state) so it is unit-testable directly.
+ */
+export function selectNewRetrievalFiles(
+  existingPaths: string[],
+  chunks: Pick<RetrievedChunk, 'relativePath' | 'lineStart' | 'lineEnd' | 'content' | 'language'>[],
+  charCap: number,
+): ContextFile[] {
+  const collectedFiles = new Set(existingPaths.map(stripLineSuffix));
+  const seenLabels = new Set<string>();
+  const files: ContextFile[] = [];
+
+  for (const chunk of chunks) {
+    // The collector already surfaced this file (fuller form) — skip the chunk.
+    if (collectedFiles.has(chunk.relativePath)) continue;
+    const label = `${chunk.relativePath}:${chunk.lineStart}-${chunk.lineEnd}`;
+    if (seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    files.push({
+      path: label,
+      content: capChars(chunk.content, charCap),
+      language: chunk.language,
+    });
+  }
+
+  return files;
 }

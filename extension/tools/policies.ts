@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import type { ToolAccessPolicy } from './types';
 
-const READ_ONLY_TOOLS = ['read_file', 'list_files', 'search_code'];
+const READ_ONLY_TOOLS = ['read_file', 'list_files', 'search_code', 'get_diagnostics'];
 
 export const ASK_POLICY: ToolAccessPolicy = {
   allowedTools: READ_ONLY_TOOLS,
@@ -21,7 +21,7 @@ export function createAgentPolicy(
     allowedTools: [
       'read_file', 'write_file', 'edit_file',
       'list_files', 'search_code', 'run_command',
-      'spawn_agent',
+      'get_diagnostics', 'spawn_agent',
     ],
     fileWritePaths: [`${workspaceRoot}/**`],
     fileReadPaths: [`${workspaceRoot}/**`],

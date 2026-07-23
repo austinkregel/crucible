@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import type { AgentTool, ToolResult } from './types';
+import { checkPathAgainstPolicy, type PolicyProvider } from './pathUtils';
 
 export class ListFilesTool implements AgentTool {
   name = 'list_files';
@@ -19,13 +20,23 @@ export class ListFilesTool implements AgentTool {
     required: [],
   };
 
+  private getPolicy: PolicyProvider;
+
+  constructor(policyProvider?: PolicyProvider) {
+    this.getPolicy = policyProvider ?? (() => null);
+  }
+
   async execute(args: Record<string, unknown>): Promise<ToolResult> {
     const pattern = (args.pattern as string) || '**/*';
     const maxResults = (args.maxResults as number) || 100;
 
     try {
       const uris = await vscode.workspace.findFiles(pattern, '**/node_modules/**', maxResults);
-      const paths = uris.map((u) => vscode.workspace.asRelativePath(u));
+      const readPaths = this.getPolicy()?.fileReadPaths;
+      const allowed = readPaths?.length
+        ? uris.filter((u) => checkPathAgainstPolicy(u.fsPath, readPaths, 'read').allowed)
+        : uris;
+      const paths = allowed.map((u) => vscode.workspace.asRelativePath(u));
       return { success: true, output: paths.join('\n') };
     } catch (err: any) {
       return { success: false, output: '', error: err.message };

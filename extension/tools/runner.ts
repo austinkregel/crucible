@@ -6,6 +6,7 @@ import { FileReadTool, FileWriteTool, FileEditTool } from './fileReadWrite';
 import { CodeSearchTool } from './codeSearch';
 import { TerminalTool } from './terminal';
 import { ListFilesTool } from './listFiles';
+import { DiagnosticsTool } from './diagnostics';
 import { PermissionsManager } from '../permissions';
 
 export class ToolRunner {
@@ -69,9 +70,10 @@ export class ToolRunner {
     this.register(new FileReadTool(policyProvider));
     this.register(new FileWriteTool(policyProvider));
     this.register(new FileEditTool(policyProvider));
-    this.register(new CodeSearchTool());
+    this.register(new CodeSearchTool(policyProvider));
     this.register(new TerminalTool(this.permissions));
-    this.register(new ListFilesTool());
+    this.register(new ListFilesTool(policyProvider));
+    this.register(new DiagnosticsTool());
   }
 
   async executeTool(

@@ -5,6 +5,7 @@ import type { ToolRunner } from '../tools/runner';
 import type { OrchestratorEventHandler } from '../orchestrator/types';
 import type { AuditLogger } from '../audit/logger';
 import { pruneToolOutputs } from '../session/compaction';
+import { parseToolCalls } from '../tools/toolCallParser';
 
 const MAX_SUBAGENT_ITERATIONS = 20;
 
@@ -142,7 +143,7 @@ export class SubAgentRunner {
 
       lastResponse = fullResponse;
 
-      const toolCalls = parseToolCalls(fullResponse, validToolNames);
+      const toolCalls = parseToolCalls(fullResponse, validToolNames, this.auditLogger);
       if (toolCalls.length === 0 || toolDefs.length === 0) break;
 
       messages.push({ role: 'assistant', content: fullResponse });
@@ -167,36 +168,6 @@ export class SubAgentRunner {
       success: true,
     };
   }
-}
-
-interface ParsedToolCall {
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-function parseToolCalls(response: string, validToolNames: Set<string>): ParsedToolCall[] {
-  const calls: ParsedToolCall[] = [];
-  const pattern = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
-  let match;
-
-  while ((match = pattern.exec(response)) !== null) {
-    const raw = match[1].trim();
-    if (raw.length > 512_000) continue;
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(raw);
-    } catch {
-      continue;
-    }
-
-    if (!parsed.name || typeof parsed.name !== 'string') continue;
-    if (!validToolNames.has(parsed.name)) continue;
-
-    calls.push({ name: parsed.name, arguments: parsed.arguments || {} });
-  }
-
-  return calls;
 }
 
 function generateId(): string {

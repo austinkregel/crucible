@@ -5,9 +5,16 @@ import * as fs from 'fs';
 import type { AgentTool, ToolResult } from './types';
 import { PermissionsManager } from '../permissions';
 
+/** Hard ceiling on any single command, regardless of config/param. */
+const COMMAND_CEILING_MS = 600_000; // 10 minutes
+const DEFAULT_COMMAND_MS = 120_000; // 2 minutes
+/** Output ring buffer: keep the head and tail, drop the middle. */
+const HEAD_LINES = 200;
+const TAIL_LINES = 800;
+
 export class TerminalTool implements AgentTool {
   name = 'run_command';
-  description = 'Run a shell command in the workspace directory';
+  description = 'Run a shell command in the workspace directory. Long-running builds/tests are supported up to the configured ceiling.';
   parameters = {
     type: 'object',
     properties: {
@@ -19,9 +26,17 @@ export class TerminalTool implements AgentTool {
         type: 'string',
         description: 'Optional working directory (relative to workspace root)',
       },
+      timeoutMs: {
+        type: 'number',
+        description: 'Optional per-command timeout in ms (clamped to the configured ceiling). Use for long builds/tests.',
+      },
     },
     required: ['command'],
   };
+
+  // Runner's outer race uses tool.timeout; keep it above the command ceiling so
+  // the command's own timeout always fires first.
+  timeout = COMMAND_CEILING_MS + 5_000;
 
   private permissions: PermissionsManager;
 
@@ -75,23 +90,45 @@ export class TerminalTool implements AgentTool {
       cwd = workspaceRoot;
     }
 
-    return new Promise((resolve) => {
-      const timeout = 30_000;
+    const timeout = resolveTimeout(args.timeoutMs);
 
-      cp.exec(command, { cwd, timeout, maxBuffer: 1024 * 1024 }, (err, stdout, stderr) => {
+    return new Promise((resolve) => {
+      cp.exec(command, { cwd, timeout, maxBuffer: 8 * 1024 * 1024 }, (err, stdout, stderr) => {
         if (err) {
+          const timedOut = (err as any).killed && (err as any).signal === 'SIGTERM';
           resolve({
             success: false,
-            output: stdout || '',
-            error: stderr || err.message,
+            output: capOutput(stdout || ''),
+            error: timedOut
+              ? `Command timed out after ${timeout}ms`
+              : stderr || err.message,
           });
         } else {
           resolve({
             success: true,
-            output: (stdout + (stderr ? `\n[stderr]\n${stderr}` : '')).trim(),
+            output: capOutput((stdout + (stderr ? `\n[stderr]\n${stderr}` : '')).trim()),
           });
         }
       });
     });
   }
+}
+
+/** Clamp the requested/config timeout into (0, ceiling]. */
+function resolveTimeout(requested: unknown): number {
+  const configured = vscode.workspace
+    .getConfiguration('crucible')
+    .get<number>('terminal.maxCommandDurationMs', DEFAULT_COMMAND_MS);
+  const value = typeof requested === 'number' && requested > 0 ? requested : configured;
+  return Math.min(Math.max(1_000, value), COMMAND_CEILING_MS);
+}
+
+/** Keep the head and tail of long output; collapse the middle with a marker. */
+function capOutput(output: string): string {
+  const lines = output.split('\n');
+  if (lines.length <= HEAD_LINES + TAIL_LINES) return output;
+  const head = lines.slice(0, HEAD_LINES);
+  const tail = lines.slice(-TAIL_LINES);
+  const dropped = lines.length - HEAD_LINES - TAIL_LINES;
+  return [...head, `… (${dropped} lines omitted) …`, ...tail].join('\n');
 }

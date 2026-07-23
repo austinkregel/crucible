@@ -6,9 +6,9 @@ import type { PlanStep, ExecutionResult, OrchestratorEventHandler } from './type
 import type { ToolRunner } from '../tools/runner';
 import type { AuditLogger } from '../audit/logger';
 import { createPatch } from '../audit/diff';
+import { parseToolCalls } from '../tools/toolCallParser';
 
 const MAX_TOOL_ITERATIONS = 15;
-const MAX_ARG_SIZE_BYTES = 512_000; // 500KB limit per tool call arguments
 const MAX_CONSECUTIVE_FAILURES = 3;
 
 export class Executor {
@@ -212,65 +212,6 @@ export class Executor {
       filesChanged: allFiles,
     };
   }
-}
-
-interface ParsedToolCall {
-  name: string;
-  arguments: Record<string, unknown>;
-}
-
-export function parseToolCalls(
-  response: string,
-  validToolNames?: Set<string>,
-  auditLogger?: AuditLogger,
-): ParsedToolCall[] {
-  const calls: ParsedToolCall[] = [];
-  const pattern = /<tool_call>\s*([\s\S]*?)\s*<\/tool_call>/g;
-  let match;
-
-  while ((match = pattern.exec(response)) !== null) {
-    const raw = match[1].trim();
-
-    // Reject oversized payloads
-    if (raw.length > MAX_ARG_SIZE_BYTES) {
-      const msg = `Rejected tool call: payload exceeds ${MAX_ARG_SIZE_BYTES} bytes (got ${raw.length})`;
-      console.warn(`[Crucible] ${msg}`);
-      auditLogger?.log('error', { message: msg, rawLength: raw.length });
-      continue;
-    }
-
-    let parsed: any;
-    try {
-      parsed = JSON.parse(raw);
-    } catch (err: any) {
-      const msg = `Malformed tool call JSON: ${err.message}`;
-      console.warn(`[Crucible] ${msg}`, raw.slice(0, 200));
-      auditLogger?.log('error', { message: msg, rawPreview: raw.slice(0, 500) });
-      continue;
-    }
-
-    if (!parsed.name || typeof parsed.name !== 'string') {
-      const msg = 'Tool call missing or invalid "name" field';
-      console.warn(`[Crucible] ${msg}`);
-      auditLogger?.log('error', { message: msg, parsed });
-      continue;
-    }
-
-    // Validate tool name against registered set
-    if (validToolNames && !validToolNames.has(parsed.name)) {
-      const msg = `Rejected unknown tool "${parsed.name}". Valid: ${[...validToolNames].join(', ')}`;
-      console.warn(`[Crucible] ${msg}`);
-      auditLogger?.log('error', { message: msg, toolName: parsed.name });
-      continue;
-    }
-
-    calls.push({
-      name: parsed.name,
-      arguments: parsed.arguments || {},
-    });
-  }
-
-  return calls;
 }
 
 function extractFileReferences(response: string): string[] {

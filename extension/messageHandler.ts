@@ -13,6 +13,8 @@ import { IndexManager } from './indexer/indexManager';
 import { Retriever, getRecentFiles } from './retrieval/retriever';
 import { BudgetCompiler } from './retrieval/budgetCompiler';
 import { ContextCollector } from './context/collector';
+import { ProjectGrounding } from './context/projectGrounding';
+import { composeSystemPrefix } from './context/systemPrompt';
 import { parseMentions, stripMentions } from './context/mentions';
 import { PlanStore } from './plans/store';
 import { AuditLogger } from './audit/logger';
@@ -40,6 +42,7 @@ let retriever: Retriever;
 let budgetCompiler: BudgetCompiler;
 let collector: ContextCollector;
 let rollingMemory: RollingMemory;
+let grounding: ProjectGrounding;
 let planStore: PlanStore;
 let auditLogger: AuditLogger;
 let agentRegistry: AgentRegistry;
@@ -60,7 +63,22 @@ async function ensureInitialized(context: vscode.ExtensionContext) {
   toolRunner.setAuditLogger(auditLogger);
 
   const wsRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? '.';
+
+  // Build project grounding once so every role/chat is anchored to the real
+  // project. Cheap on cache hit (stat-only); never fatal if a source is missing.
+  grounding = new ProjectGrounding(cacheStore, wsRoot);
+  try {
+    await grounding.load();
+  } catch (err: any) {
+    console.warn('[Crucible] Project grounding failed to load:', err?.message);
+  }
+
   agentRegistry = new AgentRegistry(wsRoot);
+  // Load user-defined agent profiles before TaskTool is built, so spawn_agent
+  // advertises them (it snapshots subagent descriptions at construction).
+  for (const warning of agentRegistry.loadUserProfiles()) {
+    console.warn(`[Crucible] ${warning}`);
+  }
   subAgentRunner = new SubAgentRunner(agentRegistry, toolRunner);
   subAgentRunner.setAuditLogger(auditLogger);
 
@@ -71,7 +89,7 @@ async function ensureInitialized(context: vscode.ExtensionContext) {
   });
   toolRunner.register(taskTool);
 
-  orchestrator = new Orchestrator(registry, cacheStore, toolRunner);
+  orchestrator = new Orchestrator(registry, cacheStore, toolRunner, grounding);
   orchestrator.setAuditLogger(auditLogger);
   sessionManager = new SessionManager();
 
@@ -115,6 +133,7 @@ async function initIndexer(context: vscode.ExtensionContext) {
   try {
     indexManager = new IndexManager(workspacePath, ollamaBaseUrl);
     retriever = new Retriever(indexManager.getEmbedder(), indexManager.getVectorStore());
+    orchestrator.setRetrieval(retriever);
 
     indexManager.onStatusChange((status) => {
       currentView?.webview.postMessage({ type: 'indexStatus', status });
@@ -251,6 +270,12 @@ export async function handleWebviewMessage(
       if (indexManager && folders) {
         indexManager.reindexAll(folders[0].uri.fsPath).catch(() => {});
       }
+      // A full reindex is the user's signal that project state changed; rebuild
+      // the grounding block too so instruction/config edits take effect without
+      // a restart (load()'s fingerprint would otherwise only recheck on init).
+      grounding?.refresh().catch((err) => {
+        console.warn('[Crucible] Project grounding failed to refresh:', err?.message);
+      });
       break;
     }
     case 'addContextFiles': {
@@ -422,6 +447,7 @@ async function handleQuickChat(message: any, view: vscode.WebviewView) {
         retrievedChunks,
         collectedContext,
         rollingMemory,
+        grounding,
       });
 
       systemPrefix = budget.systemPrefix;
@@ -437,6 +463,12 @@ async function handleQuickChat(message: any, view: vscode.WebviewView) {
           systemPrefix += '\n\n## Relevant Codebase Context\n' + contextSection;
         }
       }
+    } else {
+      // Indexing disabled / not ready: still ground chat in the project.
+      systemPrefix = composeSystemPrefix({
+        grounding: grounding?.toPromptSection(),
+        rollingMemory: rollingMemory?.toPromptSection(),
+      });
     }
 
     let chatMessages: ChatMessage[] = [];

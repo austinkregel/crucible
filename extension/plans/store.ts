@@ -3,6 +3,7 @@ import * as path from 'path';
 import * as os from 'os';
 import * as crypto from 'crypto';
 import type { Plan } from '../orchestrator/types';
+import { parseFrontmatter } from '../utils/frontmatter';
 
 export const DEFAULT_PLANS_DIR = path.join(os.homedir(), '.crucible', 'plans');
 
@@ -196,14 +197,10 @@ function planToMarkdown(plan: Plan, projectName: string, meta?: { approved?: boo
 }
 
 function parsePlanMarkdown(content: string, filePath: string, fileName: string): StoredPlanMeta | null {
-  const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-  if (!frontmatterMatch) return null;
+  const { present, data } = parseFrontmatter(content);
+  if (!present) return null;
 
-  const fm = frontmatterMatch[1];
-  const get = (key: string): string | undefined => {
-    const match = fm.match(new RegExp(`^${key}:\\s*(.+)$`, 'm'));
-    return match?.[1]?.trim();
-  };
+  const get = (key: string): string | undefined => data[key];
 
   const titleMatch = content.match(/^# (.+)$/m);
   const name = titleMatch?.[1] ?? fileName;
