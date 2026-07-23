@@ -2,11 +2,11 @@ import * as vscode from 'vscode';
 import type { ProviderRegistry } from '../providers/registry';
 import { ContextCompiler } from '../context/compiler';
 import { ContextCollector } from '../context/collector';
-import type { CollectedContext } from '../context/collector';
+import type { CollectedContext, ContextFile } from '../context/collector';
 import { CacheStore } from '../cache/store';
 import { RollingMemory } from '../cache/rollingMemory';
 import type { ProjectGrounding } from '../context/projectGrounding';
-import type { Retriever } from '../retrieval/retriever';
+import type { Retriever, RetrievedChunk } from '../retrieval/retriever';
 import { getRecentFiles } from '../retrieval/retriever';
 import { Planner } from './planner';
 import { Validator } from './validator';
@@ -85,17 +85,13 @@ export class Orchestrator {
       return;
     }
 
-    const seen = new Set(context.files.map((f) => f.path));
-    for (const chunk of chunks) {
-      const label = `${chunk.relativePath}:${chunk.lineStart}-${chunk.lineEnd}`;
-      if (seen.has(label)) continue;
-      seen.add(label);
-      context.files.push({
-        path: label,
-        content: capChars(chunk.content, RETRIEVAL_CHUNK_CHAR_CAP),
-        language: chunk.language,
-      });
-    }
+    context.files.push(
+      ...selectNewRetrievalFiles(
+        context.files.map((f) => f.path),
+        chunks,
+        RETRIEVAL_CHUNK_CHAR_CAP,
+      ),
+    );
   }
 
   /**
@@ -403,4 +399,42 @@ export class Orchestrator {
 function capChars(text: string, maxChars: number): string {
   if (text.length <= maxChars) return text;
   return `${text.slice(0, maxChars).trimEnd()}\n… (truncated)`;
+}
+
+/** Strip a trailing ":line" or ":start-end" locator so retrieved chunks dedup
+ * against the bare file path the collector produced (e.g. "src/a.ts:5"). */
+function stripLineSuffix(filePath: string): string {
+  return filePath.replace(/:\d+(?:-\d+)?$/, '');
+}
+
+/**
+ * Pick which retrieved chunks to append to a context, dropping any whose file
+ * the collector already surfaced and any exact-duplicate chunk range. Without
+ * this a chunk of an already-collected file was appended as a second copy of
+ * the same code — pure token waste on a prompt path with no budget. Kept pure
+ * (no orchestrator state) so it is unit-testable directly.
+ */
+export function selectNewRetrievalFiles(
+  existingPaths: string[],
+  chunks: Pick<RetrievedChunk, 'relativePath' | 'lineStart' | 'lineEnd' | 'content' | 'language'>[],
+  charCap: number,
+): ContextFile[] {
+  const collectedFiles = new Set(existingPaths.map(stripLineSuffix));
+  const seenLabels = new Set<string>();
+  const files: ContextFile[] = [];
+
+  for (const chunk of chunks) {
+    // The collector already surfaced this file (fuller form) — skip the chunk.
+    if (collectedFiles.has(chunk.relativePath)) continue;
+    const label = `${chunk.relativePath}:${chunk.lineStart}-${chunk.lineEnd}`;
+    if (seenLabels.has(label)) continue;
+    seenLabels.add(label);
+    files.push({
+      path: label,
+      content: capChars(chunk.content, charCap),
+      language: chunk.language,
+    });
+  }
+
+  return files;
 }

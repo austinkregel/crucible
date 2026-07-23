@@ -197,4 +197,45 @@ describe('FileEditTool', () => {
     expect(result.error).toContain('out of range');
     expect(vscode.workspace.fs.writeFile).not.toHaveBeenCalled();
   });
+
+  it('treats newText literally (no $-pattern substitution)', async () => {
+    (vscode.workspace.findFiles as any).mockResolvedValue([
+      { fsPath: '/test-workspace/src/file.ts' },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'const label = PLACEHOLDER;',
+    });
+
+    // $&, $1, $` all have special meaning to String.prototype.replace's
+    // replacement string; a literal replacement must preserve them verbatim.
+    const result = await tool.execute({
+      path: 'src/file.ts',
+      oldText: 'PLACEHOLDER',
+      newText: "cost + '$&' + '$1' + '$`'",
+    });
+
+    expect(result.success).toBe(true);
+    const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
+    expect(new TextDecoder().decode(written)).toBe("const label = cost + '$&' + '$1' + '$`';");
+  });
+
+  it('replaceAll treats newText literally too', async () => {
+    (vscode.workspace.findFiles as any).mockResolvedValue([
+      { fsPath: '/test-workspace/src/file.ts' },
+    ]);
+    (vscode.workspace.openTextDocument as any).mockResolvedValue({
+      getText: () => 'X X',
+    });
+
+    const result = await tool.execute({
+      path: 'src/file.ts',
+      oldText: 'X',
+      newText: '$&',
+      replaceAll: true,
+    });
+
+    expect(result.success).toBe(true);
+    const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
+    expect(new TextDecoder().decode(written)).toBe('$& $&');
+  });
 });

@@ -7,8 +7,6 @@ import {
   type PolicyProvider,
 } from './pathUtils';
 
-export type { PolicyProvider };
-
 export class FileReadTool implements AgentTool {
   name = 'read_file';
   description = 'Read the contents of a file in the workspace';
@@ -234,9 +232,11 @@ export class FileEditTool implements AgentTool {
           error: `oldText matches ${count} locations in ${filePath} (lines ${lines}...). Add surrounding context to make it unique, set replaceAll:true, or target one with occurrence:N.`,
         };
       } else {
-        newContent = replaceAll
-          ? content.split(oldText).join(newText)
-          : content.replace(oldText, newText);
+        // split/join is a literal replacement; content.replace(str, str) would
+        // interpret $&, $1, $`, etc. in newText and corrupt code containing '$'.
+        // Reached only when replaceAll is set or count === 1, so this replaces
+        // every match or the single match respectively.
+        newContent = content.split(oldText).join(newText);
         replaced = replaceAll ? count : 1;
       }
 

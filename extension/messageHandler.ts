@@ -270,6 +270,12 @@ export async function handleWebviewMessage(
       if (indexManager && folders) {
         indexManager.reindexAll(folders[0].uri.fsPath).catch(() => {});
       }
+      // A full reindex is the user's signal that project state changed; rebuild
+      // the grounding block too so instruction/config edits take effect without
+      // a restart (load()'s fingerprint would otherwise only recheck on init).
+      grounding?.refresh().catch((err) => {
+        console.warn('[Crucible] Project grounding failed to refresh:', err?.message);
+      });
       break;
     }
     case 'addContextFiles': {

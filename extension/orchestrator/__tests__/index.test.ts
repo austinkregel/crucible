@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { Orchestrator } from '../index';
+import { Orchestrator, selectNewRetrievalFiles } from '../index';
 import { MockCacheStore } from '../../__mocks__/cacheStore';
 import type { OrchestratorEvent, OrchestratorEventHandler } from '../types';
 
@@ -137,5 +137,57 @@ describe('Orchestrator pipeline events', () => {
     expect(started.type).toBe('toolCallStarted');
     expect(completed.type).toBe('toolCallCompleted');
     expect(failed.type).toBe('toolCallFailed');
+  });
+});
+
+describe('selectNewRetrievalFiles', () => {
+  const chunk = (relativePath: string, lineStart: number, lineEnd: number, content = 'code') => ({
+    relativePath,
+    lineStart,
+    lineEnd,
+    content,
+    language: 'typescript',
+  });
+
+  it('drops a chunk whose file the collector already surfaced (full file)', () => {
+    const files = selectNewRetrievalFiles(['src/a.ts'], [chunk('src/a.ts', 1, 10)], 1500);
+    expect(files).toEqual([]);
+  });
+
+  it('drops a chunk whose file was surfaced with a ":line" locator (symbol mention)', () => {
+    const files = selectNewRetrievalFiles(['src/a.ts:5'], [chunk('src/a.ts', 20, 30)], 1500);
+    expect(files).toEqual([]);
+  });
+
+  it('keeps chunks for files not already in the context', () => {
+    const files = selectNewRetrievalFiles(['src/a.ts'], [chunk('src/b.ts', 1, 10)], 1500);
+    expect(files).toHaveLength(1);
+    expect(files[0].path).toBe('src/b.ts:1-10');
+    expect(files[0].content).toBe('code');
+  });
+
+  it('dedupes identical chunk ranges from the retriever', () => {
+    const files = selectNewRetrievalFiles(
+      [],
+      [chunk('src/b.ts', 1, 10), chunk('src/b.ts', 1, 10)],
+      1500,
+    );
+    expect(files).toHaveLength(1);
+  });
+
+  it('keeps distinct ranges from the same new file', () => {
+    const files = selectNewRetrievalFiles(
+      [],
+      [chunk('src/b.ts', 1, 10), chunk('src/b.ts', 40, 50)],
+      1500,
+    );
+    expect(files.map((f) => f.path)).toEqual(['src/b.ts:1-10', 'src/b.ts:40-50']);
+  });
+
+  it('caps chunk content to the char budget', () => {
+    const files = selectNewRetrievalFiles([], [chunk('src/b.ts', 1, 99, 'x'.repeat(50))], 10);
+    const content = files[0].content ?? '';
+    expect(content).toContain('… (truncated)');
+    expect(content.length).toBeLessThan(50);
   });
 });
