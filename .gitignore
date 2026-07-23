@@ -3,4 +3,4 @@ dist/
 *.vsix
 .vscode-test/
 coverage/
-.crucible/lancedb/
+.crucible/
