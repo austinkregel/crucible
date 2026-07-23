@@ -5,6 +5,14 @@
   "version": "0.1.0",
   "publisher": "crucible",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/austinkregel/crucible.git"
+  },
+  "bugs": {
+    "url": "https://github.com/austinkregel/crucible/issues"
+  },
+  "homepage": "https://github.com/austinkregel/crucible#readme",
   "type": "module",
   "engines": {
     "vscode": "^1.100.0"
