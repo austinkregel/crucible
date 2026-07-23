@@ -1,7 +1,8 @@
 name: Release
 
 on:
-  # Tag a commit to cut a release: `git tag v0.1.0 && git push origin v0.1.0`
+  # Tag a commit to cut a release: `git tag vX.Y.Z && git push origin vX.Y.Z`
+  # The tag (minus the leading `v`) becomes the packaged version.
   push:
     tags: ['v*']
   # Or build installable vsix files on demand, without publishing a release.
@@ -63,10 +64,25 @@ jobs:
         shell: bash
         run: node scripts/prune-native-prebuilds.mjs ${{ matrix.target }}
 
+      # On a tag push the release version is the tag (v1.2.3 -> 1.2.3); that is
+      # the source of truth for a cut release. workflow_dispatch builds have no
+      # tag, so fall back to whatever package.json declares.
       - name: Resolve version
         id: version
         shell: bash
-        run: echo "version=$(node -p "require('./package.json').version")" >> "$GITHUB_OUTPUT"
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF#refs/tags/v}"
+          else
+            version="$(node -p "require('./package.json').version")"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # Sync package.json so vsce writes the cut-release version into the vsix
+      # manifest, not the stale 0.1.0 checked into the repo.
+      - name: Set package version
+        shell: bash
+        run: npm version "${{ steps.version.outputs.version }}" --no-git-tag-version --allow-same-version
 
       # Unsigned by design: no publisher certificate, no marketplace publish.
       # The .vsix installs via "Extensions: Install from VSIX..." or
