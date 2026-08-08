@@ -26,7 +26,10 @@ export class CrucibleViewProvider implements vscode.WebviewViewProvider {
     });
 
     webviewView.webview.onDidReceiveMessage(
-      (message) => handleWebviewMessage(message, this.context, webviewView),
+      (message) =>
+        handleWebviewMessage(message, this.context, webviewView).catch((err) => {
+          console.error('[Crucible] Message handler failed:', message?.type, err);
+        }),
       undefined,
       this.context.subscriptions,
     );

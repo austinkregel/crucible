@@ -150,12 +150,79 @@ async function initIndexer(context: vscode.ExtensionContext) {
   }
 }
 
+/**
+ * Read the persisted config into the webview's `config` message shape. Reads
+ * directly from VSCode settings — never touches the registry/indexer — so it
+ * works before (and independently of) ensureInitialized().
+ */
+function readCrucibleConfig() {
+  const config = vscode.workspace.getConfiguration('crucible');
+  return {
+    roles: {
+      planner: config.get('roles.planner'),
+      executor: config.get('roles.executor'),
+      validator: config.get('roles.validator'),
+      postValidator: config.get('roles.postValidator'),
+    },
+    adversarial: {
+      confidenceThreshold: config.get('adversarial.confidenceThreshold'),
+      maxIterations: config.get('adversarial.maxIterations'),
+      postValidation: config.get('adversarial.postValidation'),
+    },
+  };
+}
+
+/**
+ * Handle config get/update. Deliberately NOT gated behind ensureInitialized():
+ * a slow/hanging provider discovery must never block the settings UI from
+ * loading persisted values (that stall reads as "edits didn't survive").
+ */
+async function handleConfigMessage(message: any, view: vscode.WebviewView) {
+  if (message.type === 'updateConfig') {
+    const cfg = vscode.workspace.getConfiguration('crucible');
+    const target = vscode.workspace.workspaceFolders?.length
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+    try {
+      if (message.roles) {
+        for (const [role, value] of Object.entries(message.roles)) {
+          await cfg.update(`roles.${role}`, value, target);
+        }
+      }
+      if (message.adversarial) {
+        for (const [key, value] of Object.entries(message.adversarial)) {
+          await cfg.update(`adversarial.${key}`, value, target);
+        }
+      }
+    } catch (err: any) {
+      // Surface the failure instead of letting the optimistic UI update linger —
+      // otherwise the write silently drops and the change vanishes on reload.
+      view.webview.postMessage({
+        type: 'configError',
+        error: err?.message || String(err),
+      });
+    }
+  }
+  // Always reply with the authoritative persisted state (post-write on update).
+  view.webview.postMessage({ type: 'config', config: readCrucibleConfig() });
+}
+
 export async function handleWebviewMessage(
   message: any,
   context: vscode.ExtensionContext,
   view: vscode.WebviewView,
 ) {
   currentView = view;
+
+  // Config read/write needs only vscode.workspace.getConfiguration, so serve it
+  // before ensureInitialized() — otherwise a hanging provider discovery would
+  // stall the settings UI on its hardcoded defaults, which looks like the
+  // persisted edits were lost on refresh.
+  if (message.type === 'getConfig' || message.type === 'updateConfig') {
+    await handleConfigMessage(message, view);
+    return;
+  }
+
   await ensureInitialized(context);
 
   switch (message.type) {
@@ -200,60 +267,6 @@ export async function handleWebviewMessage(
         connected: (p as any).connected ?? true,
       }));
       view.webview.postMessage({ type: 'providers', providers });
-      break;
-    }
-    case 'getConfig': {
-      const config = vscode.workspace.getConfiguration('crucible');
-      view.webview.postMessage({
-        type: 'config',
-        config: {
-          roles: {
-            planner: config.get('roles.planner'),
-            executor: config.get('roles.executor'),
-            validator: config.get('roles.validator'),
-            postValidator: config.get('roles.postValidator'),
-          },
-          adversarial: {
-            confidenceThreshold: config.get('adversarial.confidenceThreshold'),
-            maxIterations: config.get('adversarial.maxIterations'),
-            postValidation: config.get('adversarial.postValidation'),
-          },
-        },
-      });
-      break;
-    }
-    case 'updateConfig': {
-      const cfg = vscode.workspace.getConfiguration('crucible');
-      const target = vscode.workspace.workspaceFolders?.length
-        ? vscode.ConfigurationTarget.Workspace
-        : vscode.ConfigurationTarget.Global;
-      if (message.roles) {
-        for (const [role, value] of Object.entries(message.roles)) {
-          await cfg.update(`roles.${role}`, value, target);
-        }
-      }
-      if (message.adversarial) {
-        for (const [key, value] of Object.entries(message.adversarial)) {
-          await cfg.update(`adversarial.${key}`, value, target);
-        }
-      }
-      const updated = vscode.workspace.getConfiguration('crucible');
-      view.webview.postMessage({
-        type: 'config',
-        config: {
-          roles: {
-            planner: updated.get('roles.planner'),
-            executor: updated.get('roles.executor'),
-            validator: updated.get('roles.validator'),
-            postValidator: updated.get('roles.postValidator'),
-          },
-          adversarial: {
-            confidenceThreshold: updated.get('adversarial.confidenceThreshold'),
-            maxIterations: updated.get('adversarial.maxIterations'),
-            postValidation: updated.get('adversarial.postValidation'),
-          },
-        },
-      });
       break;
     }
     case 'getIndexStatus': {

@@ -12,6 +12,7 @@ onMounted(() => {
 });
 
 const isRefreshing = ref(false);
+const configError = ref('');
 const pullModelName = ref('');
 const pullProviderId = ref('ollama');
 const isPulling = ref(false);
@@ -39,6 +40,10 @@ onMessage((msg) => {
       break;
     case 'config':
       settingsStore.setConfig(msg.config);
+      configError.value = '';
+      break;
+    case 'configError':
+      configError.value = msg.error || 'Failed to save setting.';
       break;
     case 'modelsDiscovered':
     case 'allModelsDiscovered':
@@ -145,6 +150,11 @@ const indexProgressPercent = () => {
 
 <template>
   <div class="flex-1 overflow-y-auto px-3 py-3 space-y-2 text-sm">
+
+    <!-- Config save error -->
+    <div v-if="configError" class="text-[10px] text-red-400 bg-red-500/10 border border-red-500/30 px-2 py-1.5 rounded">
+      Couldn't save setting: {{ configError }}
+    </div>
 
     <!-- API Key - compact top bar -->
     <div class="flex items-center justify-between p-2.5 rounded-lg bg-vscode-input-bg/50 border border-vscode-border">
