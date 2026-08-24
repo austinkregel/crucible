@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import type { AgentTool, ToolResult } from './types';
+import type { AgentTool, ToolResult, ToolContext } from './types';
 import { getWorkspaceRoot, validatePath } from './pathUtils';
 
 /**
@@ -33,7 +33,7 @@ export class DiagnosticsTool implements AgentTool {
     required: [],
   };
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, _ctx: ToolContext): Promise<ToolResult> {
     const relPath = args.path as string | undefined;
     const severity = (args.severity as string) || 'error';
     const maxResults = (args.maxResults as number) || 100;
