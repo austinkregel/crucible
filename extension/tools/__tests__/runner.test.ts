@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ToolRunner } from '../runner';
 import type { AgentTool, ToolResult } from '../types';
-import type { OrchestratorEventHandler } from '../../orchestrator/types';
+import { makeToolContext } from './testContext';
 
 function makeMockTool(name: string, result?: ToolResult): AgentTool {
   return {
@@ -15,13 +15,20 @@ function makeMockTool(name: string, result?: ToolResult): AgentTool {
 describe('ToolRunner', () => {
   let runner: ToolRunner;
   let events: Array<{ type: string; data: any }>;
-  let onEvent: OrchestratorEventHandler;
 
   beforeEach(() => {
     events = [];
-    onEvent = (event) => events.push(event);
     runner = new ToolRunner();
   });
+
+  // Context that allows every registered tool and captures emitted events. Mirrors how the
+  // executor/sub-agent runner build a per-agent context whose sink forwards events onward.
+  function ctx() {
+    return makeToolContext(
+      { allowedTools: runner.getToolNames(), terminalAllowed: true },
+      { sink: (e) => events.push(e) },
+    );
+  }
 
   describe('tool registration', () => {
     it('registers a tool and retrieves it by name', () => {
@@ -76,8 +83,8 @@ describe('ToolRunner', () => {
       const tool = makeMockTool('read_file', { success: true, output: 'file content' });
       runner.register(tool);
 
-      const result = await runner.executeTool('read_file', { path: 'foo.ts' }, onEvent);
-      expect(tool.execute).toHaveBeenCalledWith({ path: 'foo.ts' });
+      const result = await runner.executeTool('read_file', { path: 'foo.ts' }, ctx());
+      expect(tool.execute).toHaveBeenCalledWith({ path: 'foo.ts' }, expect.anything());
       expect(result.success).toBe(true);
       expect(result.output).toBe('file content');
     });
@@ -92,7 +99,7 @@ describe('ToolRunner', () => {
       });
 
       runner.register(tool);
-      await runner.executeTool('read_file', { path: 'a.ts' }, onEvent);
+      await runner.executeTool('read_file', { path: 'a.ts' }, ctx());
 
       expect(emittedBeforeExecute).toBe(true);
       expect(events[0]).toMatchObject({
@@ -105,7 +112,7 @@ describe('ToolRunner', () => {
       const tool = makeMockTool('read_file', { success: true, output: 'content' });
       runner.register(tool);
 
-      await runner.executeTool('read_file', { path: 'a.ts' }, onEvent);
+      await runner.executeTool('read_file', { path: 'a.ts' }, ctx());
 
       const completed = events.find((e) => e.type === 'toolCallCompleted');
       expect(completed).toBeDefined();
@@ -119,7 +126,7 @@ describe('ToolRunner', () => {
       (tool.execute as any).mockRejectedValue(new Error('disk error'));
       runner.register(tool);
 
-      const result = await runner.executeTool('read_file', { path: 'a.ts' }, onEvent);
+      const result = await runner.executeTool('read_file', { path: 'a.ts' }, ctx());
 
       expect(result.success).toBe(false);
       expect(result.error).toBe('disk error');
@@ -138,7 +145,7 @@ describe('ToolRunner', () => {
       });
       runner.register(tool);
 
-      const result = await runner.executeTool('read_file', { path: 'nope.ts' }, onEvent);
+      const result = await runner.executeTool('read_file', { path: 'nope.ts' }, ctx());
       expect(result.success).toBe(false);
 
       const failed = events.find((e) => e.type === 'toolCallFailed');
@@ -147,7 +154,9 @@ describe('ToolRunner', () => {
     });
 
     it('rejects unknown tool names with descriptive error', async () => {
-      const result = await runner.executeTool('nonexistent_tool', {}, onEvent);
+      // Allow the name through policy so we exercise the not-found path, not the policy gate.
+      const allowUnknown = makeToolContext({ allowedTools: ['nonexistent_tool'], terminalAllowed: true });
+      const result = await runner.executeTool('nonexistent_tool', {}, allowUnknown);
       expect(result.success).toBe(false);
       expect(result.error).toContain('nonexistent_tool');
       expect(result.error).toContain('not found');
@@ -157,7 +166,7 @@ describe('ToolRunner', () => {
       const tool = makeMockTool('read_file', { success: true, output: 'ok' });
       runner.register(tool);
 
-      await runner.executeTool('read_file', {}, onEvent);
+      await runner.executeTool('read_file', {}, ctx());
 
       const completed = events.find((e) => e.type === 'toolCallCompleted');
       expect(completed!.data).toHaveProperty('duration_ms');
