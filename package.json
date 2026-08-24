@@ -292,6 +292,23 @@
           },
           "default": [],
           "description": "MCP servers to connect to"
+        },
+        "crucible.subagents.budgets": {
+          "type": "object",
+          "default": {
+            "default": {
+              "maxIterations": 40,
+              "maxWallClockMs": 600000
+            },
+            "explore": {
+              "maxIterations": 60
+            },
+            "general": {
+              "maxIterations": 80,
+              "maxToolCalls": 200
+            }
+          },
+          "description": "Per-agent-type resource budgets for sub-agents. The 'default' entry applies to any agent type without a specific entry; type-specific entries are merged over it. All limits (maxIterations, maxToolCalls, maxTokens, maxWallClockMs, maxCostUsd) are optional; an omitted limit is unbounded. Wall-clock excludes time an agent spends blocked on a human."
         }
       }
     }
