@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { DiagnosticsTool } from '../diagnostics';
+import { makeToolContext } from './testContext';
 
 function diag(line: number, message: string, severity: number, source?: string) {
   return {
@@ -34,7 +35,7 @@ describe('DiagnosticsTool', () => {
       ],
     ]);
 
-    const result = await tool.execute({});
+    const result = await tool.execute({}, makeToolContext());
     expect(result.success).toBe(true);
     expect(result.output).toBe('src/a.ts:12:3 [error] Type X not assignable to Y (ts)');
   });
@@ -47,13 +48,13 @@ describe('DiagnosticsTool', () => {
       ],
     ]);
 
-    const result = await tool.execute({ severity: 'all' });
+    const result = await tool.execute({ severity: 'all' }, makeToolContext());
     expect(result.output).toContain('[warning] unused var');
   });
 
   it('reports no diagnostics cleanly', async () => {
     (vscode.languages.getDiagnostics as any).mockReturnValue([]);
-    const result = await tool.execute({});
+    const result = await tool.execute({}, makeToolContext());
     expect(result.success).toBe(true);
     expect(result.output).toBe('No diagnostics.');
   });
