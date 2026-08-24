@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { FileReadTool, FileWriteTool, FileEditTool } from '../fileReadWrite';
+import { makeToolContext } from './testContext';
 
 describe('FileReadTool', () => {
   let tool: FileReadTool;
@@ -18,7 +19,7 @@ describe('FileReadTool', () => {
       getText: () => 'file content here',
     });
 
-    const result = await tool.execute({ path: 'src/file.ts' });
+    const result = await tool.execute({ path: 'src/file.ts' }, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toBe('file content here');
@@ -27,7 +28,7 @@ describe('FileReadTool', () => {
   it('returns error for file not found', async () => {
     (vscode.workspace.findFiles as any).mockResolvedValue([]);
 
-    const result = await tool.execute({ path: 'missing.ts' });
+    const result = await tool.execute({ path: 'missing.ts' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('File not found');
@@ -41,7 +42,10 @@ describe('FileReadTool', () => {
       getText: () => 'line1\nline2\nline3\nline4\nline5',
     });
 
-    const result = await tool.execute({ path: 'src/file.ts', startLine: 2, endLine: 4 });
+    const result = await tool.execute(
+      { path: 'src/file.ts', startLine: 2, endLine: 4 },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(true);
     expect(result.output).toBe('line2\nline3\nline4');
@@ -57,7 +61,7 @@ describe('FileWriteTool', () => {
   });
 
   it('writes file successfully', async () => {
-    const result = await tool.execute({ path: 'src/new.ts', content: 'hello' });
+    const result = await tool.execute({ path: 'src/new.ts', content: 'hello' }, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toContain('Written');
@@ -68,7 +72,7 @@ describe('FileWriteTool', () => {
     const original = vscode.workspace.workspaceFolders;
     (vscode.workspace as any).workspaceFolders = undefined;
 
-    const result = await tool.execute({ path: 'file.ts', content: 'data' });
+    const result = await tool.execute({ path: 'file.ts', content: 'data' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('No workspace folder open');
@@ -93,11 +97,14 @@ describe('FileEditTool', () => {
       getText: () => 'const old = true;',
     });
 
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'old',
-      newText: 'updated',
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'old',
+        newText: 'updated',
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(true);
     expect(result.output).toContain('Replaced');
@@ -112,11 +119,14 @@ describe('FileEditTool', () => {
       getText: () => 'const value = 1;',
     });
 
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'nonexistent',
-      newText: 'replacement',
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'nonexistent',
+        newText: 'replacement',
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('Old text not found in file');
@@ -130,7 +140,10 @@ describe('FileEditTool', () => {
       getText: () => 'x = 1;\ny = 1;\nz = 1;',
     });
 
-    const result = await tool.execute({ path: 'src/file.ts', oldText: '1', newText: '2' });
+    const result = await tool.execute(
+      { path: 'src/file.ts', oldText: '1', newText: '2' },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('matches 3 locations');
@@ -145,12 +158,15 @@ describe('FileEditTool', () => {
       getText: () => 'a a a',
     });
 
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'a',
-      newText: 'b',
-      replaceAll: true,
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'a',
+        newText: 'b',
+        replaceAll: true,
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(true);
     expect(result.output).toContain('Replaced 3 occurrence');
@@ -166,12 +182,15 @@ describe('FileEditTool', () => {
       getText: () => 'a a a',
     });
 
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'a',
-      newText: 'b',
-      occurrence: 2,
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'a',
+        newText: 'b',
+        occurrence: 2,
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(true);
     const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
@@ -186,12 +205,15 @@ describe('FileEditTool', () => {
       getText: () => 'a a',
     });
 
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'a',
-      newText: 'b',
-      occurrence: 5,
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'a',
+        newText: 'b',
+        occurrence: 5,
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('out of range');
@@ -208,11 +230,14 @@ describe('FileEditTool', () => {
 
     // $&, $1, $` all have special meaning to String.prototype.replace's
     // replacement string; a literal replacement must preserve them verbatim.
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'PLACEHOLDER',
-      newText: "cost + '$&' + '$1' + '$`'",
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'PLACEHOLDER',
+        newText: "cost + '$&' + '$1' + '$`'",
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(true);
     const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
@@ -227,12 +252,15 @@ describe('FileEditTool', () => {
       getText: () => 'X X',
     });
 
-    const result = await tool.execute({
-      path: 'src/file.ts',
-      oldText: 'X',
-      newText: '$&',
-      replaceAll: true,
-    });
+    const result = await tool.execute(
+      {
+        path: 'src/file.ts',
+        oldText: 'X',
+        newText: '$&',
+        replaceAll: true,
+      },
+      makeToolContext(),
+    );
 
     expect(result.success).toBe(true);
     const written = (vscode.workspace.fs.writeFile as any).mock.calls[0][1];
