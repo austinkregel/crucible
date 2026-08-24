@@ -1,10 +1,9 @@
 import * as vscode from 'vscode';
-import type { AgentTool, ToolResult } from './types';
+import type { AgentTool, ToolResult, ToolContext } from './types';
 import {
   validatePath,
   getWorkspaceRoot,
   checkPathAgainstPolicy,
-  type PolicyProvider,
 } from './pathUtils';
 
 export class FileReadTool implements AgentTool {
@@ -29,13 +28,7 @@ export class FileReadTool implements AgentTool {
     required: ['path'],
   };
 
-  private getPolicy: PolicyProvider;
-
-  constructor(policyProvider?: PolicyProvider) {
-    this.getPolicy = policyProvider ?? (() => null);
-  }
-
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const filePath = args.path as string;
     const startLine = args.startLine as number | undefined;
     const endLine = args.endLine as number | undefined;
@@ -47,7 +40,7 @@ export class FileReadTool implements AgentTool {
         return { success: false, output: '', error: check.error };
       }
 
-      const policy = this.getPolicy();
+      const policy = ctx.policy;
       if (policy?.fileReadPaths) {
         const globCheck = checkPathAgainstPolicy(check.resolved, policy.fileReadPaths, 'read');
         if (!globCheck.allowed) {
@@ -97,13 +90,7 @@ export class FileWriteTool implements AgentTool {
     required: ['path', 'content'],
   };
 
-  private getPolicy: PolicyProvider;
-
-  constructor(policyProvider?: PolicyProvider) {
-    this.getPolicy = policyProvider ?? (() => null);
-  }
-
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const filePath = args.path as string;
     const content = args.content as string;
 
@@ -118,7 +105,7 @@ export class FileWriteTool implements AgentTool {
         return { success: false, output: '', error: check.error };
       }
 
-      const policy = this.getPolicy();
+      const policy = ctx.policy;
       if (policy?.fileWritePaths) {
         const globCheck = checkPathAgainstPolicy(check.resolved, policy.fileWritePaths, 'write');
         if (!globCheck.allowed) {
@@ -167,13 +154,7 @@ export class FileEditTool implements AgentTool {
     required: ['path', 'oldText', 'newText'],
   };
 
-  private getPolicy: PolicyProvider;
-
-  constructor(policyProvider?: PolicyProvider) {
-    this.getPolicy = policyProvider ?? (() => null);
-  }
-
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const filePath = args.path as string;
     const oldText = args.oldText as string;
     const newText = args.newText as string;
@@ -188,7 +169,7 @@ export class FileEditTool implements AgentTool {
           return { success: false, output: '', error: check.error };
         }
 
-        const policy = this.getPolicy();
+        const policy = ctx.policy;
         if (policy?.fileWritePaths) {
           const globCheck = checkPathAgainstPolicy(check.resolved, policy.fileWritePaths, 'write');
           if (!globCheck.allowed) {
