@@ -7,6 +7,7 @@ vi.mock('child_process', () => ({
 import * as cp from 'child_process';
 import { TerminalTool } from '../terminal';
 import { PermissionsManager } from '../../permissions';
+import { makeToolContext } from './testContext';
 
 describe('TerminalTool', () => {
   let tool: TerminalTool;
@@ -24,7 +25,7 @@ describe('TerminalTool', () => {
       cb(null, 'output', ''),
     );
 
-    const result = await tool.execute({ command: 'ls' });
+    const result = await tool.execute({ command: 'ls' }, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toBe('output');
@@ -35,7 +36,7 @@ describe('TerminalTool', () => {
       cb(new Error('fail'), '', 'error msg'),
     );
 
-    const result = await tool.execute({ command: 'bad-cmd' });
+    const result = await tool.execute({ command: 'bad-cmd' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('error msg');
@@ -46,7 +47,7 @@ describe('TerminalTool', () => {
       cb(null, 'stdout', 'warn'),
     );
 
-    const result = await tool.execute({ command: 'ls' });
+    const result = await tool.execute({ command: 'ls' }, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toContain('stdout');
@@ -59,7 +60,7 @@ describe('TerminalTool', () => {
       reason: 'blocked',
     });
 
-    const result = await tool.execute({ command: 'rm -rf /' });
+    const result = await tool.execute({ command: 'rm -rf /' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('blocked');
@@ -71,7 +72,7 @@ describe('TerminalTool', () => {
       cb(null, 'ok', '');
     });
 
-    await tool.execute({ command: 'ls' });
+    await tool.execute({ command: 'ls' }, makeToolContext());
 
     expect(cp.exec).toHaveBeenCalled();
   });
@@ -82,7 +83,7 @@ describe('TerminalTool', () => {
       cb(null, 'ok', '');
     });
 
-    await tool.execute({ command: 'ls', cwd: 'src' });
+    await tool.execute({ command: 'ls', cwd: 'src' }, makeToolContext());
 
     expect(cp.exec).toHaveBeenCalled();
   });
@@ -94,7 +95,7 @@ describe('TerminalTool', () => {
       cb(null, 'ok', '');
     });
 
-    await tool.execute({ command: 'npm test' });
+    await tool.execute({ command: 'npm test' }, makeToolContext());
 
     expect(seen.timeout).toBe(120_000);
     expect(seen.maxBuffer).toBe(8 * 1024 * 1024);
@@ -107,7 +108,7 @@ describe('TerminalTool', () => {
       cb(null, 'ok', '');
     });
 
-    await tool.execute({ command: 'npm test', timeoutMs: 5_000_000 });
+    await tool.execute({ command: 'npm test', timeoutMs: 5_000_000 }, makeToolContext());
 
     expect(seen.timeout).toBe(600_000);
   });
@@ -119,7 +120,7 @@ describe('TerminalTool', () => {
       cb(null, 'ok', '');
     });
 
-    await tool.execute({ command: 'npm test', timeoutMs: 45_000 });
+    await tool.execute({ command: 'npm test', timeoutMs: 45_000 }, makeToolContext());
 
     expect(seen.timeout).toBe(45_000);
   });
@@ -132,7 +133,7 @@ describe('TerminalTool', () => {
       cb(err, 'partial', '');
     });
 
-    const result = await tool.execute({ command: 'sleep 999' });
+    const result = await tool.execute({ command: 'sleep 999' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toContain('timed out');
@@ -145,7 +146,7 @@ describe('TerminalTool', () => {
       cb(null, big, ''),
     );
 
-    const result = await tool.execute({ command: 'noisy' });
+    const result = await tool.execute({ command: 'noisy' }, makeToolContext());
 
     expect(result.output).toContain('line0');
     expect(result.output).toContain('line1499');
