@@ -21,6 +21,11 @@ import { AuditLogger } from './audit/logger';
 import { AgentRegistry } from './agent/registry';
 import { SubAgentRunner } from './agent/runner';
 import { TaskTool } from './tools/taskTool';
+import { PromptBroker } from './agent/promptBroker';
+import { DefaultSupervisor } from './agent/supervisor';
+import { loadBudgetConfig } from './agent/budgetConfig';
+import type { SupervisorEvent } from './contracts/supervisor';
+import type { ExtToWebview } from './contracts/protocol';
 import {
   pruneToolOutputs,
   shouldAutoCompact,
@@ -47,6 +52,8 @@ let planStore: PlanStore;
 let auditLogger: AuditLogger;
 let agentRegistry: AgentRegistry;
 let subAgentRunner: SubAgentRunner;
+let broker: PromptBroker;
+let supervisor: DefaultSupervisor;
 let currentView: vscode.WebviewView | null = null;
 let activeAbortController: AbortController | null = null;
 let compactionSummary: string | undefined;
@@ -82,11 +89,26 @@ async function ensureInitialized(context: vscode.ExtensionContext) {
   subAgentRunner = new SubAgentRunner(agentRegistry, toolRunner);
   subAgentRunner.setAuditLogger(auditLogger);
 
-  const taskTool = new TaskTool(subAgentRunner, agentRegistry, () => {
-    const roleConfig = registry.getByRole('executor');
-    if (!roleConfig) return undefined;
-    return { provider: roleConfig.provider, model: roleConfig.model };
-  });
+  // Broker routes sub-agent questions to the webview and back; supervisor runs sub-agents as
+  // a bounded concurrent pool. Both post to whatever view is currently bound.
+  broker = new PromptBroker((msg: ExtToWebview) => currentView?.webview.postMessage(msg));
+  const maxConcurrency = vscode.workspace
+    .getConfiguration('crucible')
+    .get<number>('subagents.maxConcurrency', 4);
+  supervisor = new DefaultSupervisor(
+    subAgentRunner,
+    agentRegistry,
+    broker,
+    () => {
+      const roleConfig = registry.getByRole('executor');
+      if (!roleConfig) return undefined;
+      return { provider: roleConfig.provider, model: roleConfig.model };
+    },
+    loadBudgetConfig(),
+    { maxConcurrency, onEvent: forwardSupervisorEvent },
+  );
+
+  const taskTool = new TaskTool(supervisor, agentRegistry);
   toolRunner.register(taskTool);
 
   orchestrator = new Orchestrator(registry, cacheStore, toolRunner, grounding);
@@ -150,12 +172,79 @@ async function initIndexer(context: vscode.ExtensionContext) {
   }
 }
 
+/**
+ * Read the persisted config into the webview's `config` message shape. Reads
+ * directly from VSCode settings — never touches the registry/indexer — so it
+ * works before (and independently of) ensureInitialized().
+ */
+function readCrucibleConfig() {
+  const config = vscode.workspace.getConfiguration('crucible');
+  return {
+    roles: {
+      planner: config.get('roles.planner'),
+      executor: config.get('roles.executor'),
+      validator: config.get('roles.validator'),
+      postValidator: config.get('roles.postValidator'),
+    },
+    adversarial: {
+      confidenceThreshold: config.get('adversarial.confidenceThreshold'),
+      maxIterations: config.get('adversarial.maxIterations'),
+      postValidation: config.get('adversarial.postValidation'),
+    },
+  };
+}
+
+/**
+ * Handle config get/update. Deliberately NOT gated behind ensureInitialized():
+ * a slow/hanging provider discovery must never block the settings UI from
+ * loading persisted values (that stall reads as "edits didn't survive").
+ */
+async function handleConfigMessage(message: any, view: vscode.WebviewView) {
+  if (message.type === 'updateConfig') {
+    const cfg = vscode.workspace.getConfiguration('crucible');
+    const target = vscode.workspace.workspaceFolders?.length
+      ? vscode.ConfigurationTarget.Workspace
+      : vscode.ConfigurationTarget.Global;
+    try {
+      if (message.roles) {
+        for (const [role, value] of Object.entries(message.roles)) {
+          await cfg.update(`roles.${role}`, value, target);
+        }
+      }
+      if (message.adversarial) {
+        for (const [key, value] of Object.entries(message.adversarial)) {
+          await cfg.update(`adversarial.${key}`, value, target);
+        }
+      }
+    } catch (err: any) {
+      // Surface the failure instead of letting the optimistic UI update linger —
+      // otherwise the write silently drops and the change vanishes on reload.
+      view.webview.postMessage({
+        type: 'configError',
+        error: err?.message || String(err),
+      });
+    }
+  }
+  // Always reply with the authoritative persisted state (post-write on update).
+  view.webview.postMessage({ type: 'config', config: readCrucibleConfig() });
+}
+
 export async function handleWebviewMessage(
   message: any,
   context: vscode.ExtensionContext,
   view: vscode.WebviewView,
 ) {
   currentView = view;
+
+  // Config read/write needs only vscode.workspace.getConfiguration, so serve it
+  // before ensureInitialized() — otherwise a hanging provider discovery would
+  // stall the settings UI on its hardcoded defaults, which looks like the
+  // persisted edits were lost on refresh.
+  if (message.type === 'getConfig' || message.type === 'updateConfig') {
+    await handleConfigMessage(message, view);
+    return;
+  }
+
   await ensureInitialized(context);
 
   switch (message.type) {
@@ -166,6 +255,19 @@ export async function handleWebviewMessage(
       }
       view.webview.postMessage({ type: 'chatStreamEnd', requestId: message.requestId || '' });
       view.webview.postMessage({ type: 'agentEnd', requestId: message.requestId || '' });
+      break;
+    }
+    case 'answerQuestion': {
+      // The human answered a sub-agent's question; unblock the waiting agent.
+      broker?.resolve(message.id, message.answer);
+      break;
+    }
+    case 'cancelAgent': {
+      supervisor?.cancel(message.agentId);
+      break;
+    }
+    case 'cancelRun': {
+      supervisor?.cancelRun(message.runId);
       break;
     }
     case 'chat': {
@@ -200,60 +302,6 @@ export async function handleWebviewMessage(
         connected: (p as any).connected ?? true,
       }));
       view.webview.postMessage({ type: 'providers', providers });
-      break;
-    }
-    case 'getConfig': {
-      const config = vscode.workspace.getConfiguration('crucible');
-      view.webview.postMessage({
-        type: 'config',
-        config: {
-          roles: {
-            planner: config.get('roles.planner'),
-            executor: config.get('roles.executor'),
-            validator: config.get('roles.validator'),
-            postValidator: config.get('roles.postValidator'),
-          },
-          adversarial: {
-            confidenceThreshold: config.get('adversarial.confidenceThreshold'),
-            maxIterations: config.get('adversarial.maxIterations'),
-            postValidation: config.get('adversarial.postValidation'),
-          },
-        },
-      });
-      break;
-    }
-    case 'updateConfig': {
-      const cfg = vscode.workspace.getConfiguration('crucible');
-      const target = vscode.workspace.workspaceFolders?.length
-        ? vscode.ConfigurationTarget.Workspace
-        : vscode.ConfigurationTarget.Global;
-      if (message.roles) {
-        for (const [role, value] of Object.entries(message.roles)) {
-          await cfg.update(`roles.${role}`, value, target);
-        }
-      }
-      if (message.adversarial) {
-        for (const [key, value] of Object.entries(message.adversarial)) {
-          await cfg.update(`adversarial.${key}`, value, target);
-        }
-      }
-      const updated = vscode.workspace.getConfiguration('crucible');
-      view.webview.postMessage({
-        type: 'config',
-        config: {
-          roles: {
-            planner: updated.get('roles.planner'),
-            executor: updated.get('roles.executor'),
-            validator: updated.get('roles.validator'),
-            postValidator: updated.get('roles.postValidator'),
-          },
-          adversarial: {
-            confidenceThreshold: updated.get('adversarial.confidenceThreshold'),
-            maxIterations: updated.get('adversarial.maxIterations'),
-            postValidation: updated.get('adversarial.postValidation'),
-          },
-        },
-      });
       break;
     }
     case 'getIndexStatus': {
@@ -730,6 +778,28 @@ async function handlePullModel(message: any, view: vscode.WebviewView) {
       connected: (p as any).connected ?? true,
     }));
     view.webview.postMessage({ type: 'providers', providers });
+  }
+}
+
+/**
+ * Bridges supervisor events to the webview as the agent-attributed protocol messages the
+ * UI (lane #4) renders: lifecycle → agentTree, domain events → agentEvent (carrying runId).
+ */
+function forwardSupervisorEvent(ev: SupervisorEvent): void {
+  if (!currentView) return;
+  if (ev.kind === 'lifecycle') {
+    currentView.webview.postMessage({
+      type: 'agentTree',
+      runId: ev.ref.runId,
+      ref: ev.ref,
+      state: ev.state,
+    });
+  } else {
+    currentView.webview.postMessage({
+      type: 'agentEvent',
+      runId: ev.event.ref.runId,
+      event: ev.event,
+    });
   }
 }
 
