@@ -7,6 +7,7 @@ vi.mock('child_process', () => ({
 import * as cp from 'child_process';
 import * as vscode from 'vscode';
 import { CodeSearchTool } from '../codeSearch';
+import { makeToolContext } from './testContext';
 
 describe('CodeSearchTool', () => {
   let tool: CodeSearchTool;
@@ -21,7 +22,7 @@ describe('CodeSearchTool', () => {
       cb(null, 'src/main.ts:1:hello world', ''),
     );
 
-    const result = await tool.execute({ pattern: 'hello' });
+    const result = await tool.execute({ pattern: 'hello' }, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toBe('src/main.ts:1:hello world');
@@ -34,7 +35,7 @@ describe('CodeSearchTool', () => {
       cb(err, '', ''),
     );
 
-    const result = await tool.execute({ pattern: 'nonexistent' });
+    const result = await tool.execute({ pattern: 'nonexistent' }, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toBe('No matches found.');
@@ -47,7 +48,7 @@ describe('CodeSearchTool', () => {
       cb(err, '', 'rg not found'),
     );
 
-    const result = await tool.execute({ pattern: 'test' });
+    const result = await tool.execute({ pattern: 'test' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('rg not found');
@@ -59,7 +60,7 @@ describe('CodeSearchTool', () => {
       cb(null, 'match', '');
     });
 
-    await tool.execute({ pattern: 'test', glob: '*.ts' });
+    await tool.execute({ pattern: 'test', glob: '*.ts' }, makeToolContext());
 
     expect(cp.exec).toHaveBeenCalled();
   });
@@ -68,7 +69,7 @@ describe('CodeSearchTool', () => {
     const original = vscode.workspace.workspaceFolders;
     (vscode.workspace as any).workspaceFolders = undefined;
 
-    const result = await tool.execute({ pattern: 'test' });
+    const result = await tool.execute({ pattern: 'test' }, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('No workspace folder open');
