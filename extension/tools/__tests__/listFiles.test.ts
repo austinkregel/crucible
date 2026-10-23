@@ -1,6 +1,7 @@
 import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ListFilesTool } from '../listFiles';
+import { makeToolContext } from './testContext';
 
 describe('ListFilesTool', () => {
   let tool: ListFilesTool;
@@ -19,7 +20,7 @@ describe('ListFilesTool', () => {
       { fsPath: '/test-workspace/b.ts' },
     ]);
 
-    const result = await tool.execute({});
+    const result = await tool.execute({}, makeToolContext());
 
     expect(result.success).toBe(true);
     expect(result.output).toContain('a.ts');
@@ -29,7 +30,7 @@ describe('ListFilesTool', () => {
   it('uses default pattern **/* when no pattern provided', async () => {
     (vscode.workspace.findFiles as any).mockResolvedValue([]);
 
-    await tool.execute({});
+    await tool.execute({}, makeToolContext());
 
     expect(vscode.workspace.findFiles).toHaveBeenCalledWith(
       '**/*',
@@ -41,7 +42,7 @@ describe('ListFilesTool', () => {
   it('uses custom pattern and maxResults', async () => {
     (vscode.workspace.findFiles as any).mockResolvedValue([]);
 
-    await tool.execute({ pattern: '**/*.vue', maxResults: 10 });
+    await tool.execute({ pattern: '**/*.vue', maxResults: 10 }, makeToolContext());
 
     expect(vscode.workspace.findFiles).toHaveBeenCalledWith(
       '**/*.vue',
@@ -53,7 +54,7 @@ describe('ListFilesTool', () => {
   it('returns error when findFiles throws', async () => {
     (vscode.workspace.findFiles as any).mockRejectedValue(new Error('search failed'));
 
-    const result = await tool.execute({});
+    const result = await tool.execute({}, makeToolContext());
 
     expect(result.success).toBe(false);
     expect(result.error).toBe('search failed');

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
 import * as fs from 'fs';
-import type { AgentTool, ToolResult } from './types';
+import type { AgentTool, ToolResult, ToolContext } from './types';
 import { PermissionsManager } from '../permissions';
 
 /** Hard ceiling on any single command, regardless of config/param. */
@@ -44,7 +44,7 @@ export class TerminalTool implements AgentTool {
     this.permissions = permissions;
   }
 
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, _ctx: ToolContext): Promise<ToolResult> {
     const command = args.command as string;
     const relativeCwd = args.cwd as string | undefined;
 

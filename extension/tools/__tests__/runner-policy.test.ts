@@ -4,6 +4,7 @@ import { ASK_POLICY, createAgentPolicy } from '../policies';
 import { PermissionsManager } from '../../permissions';
 import { _configStore, window } from '../../__mocks__/vscode';
 import type { AgentTool } from '../types';
+import { makeToolContext } from './testContext';
 
 function makeMockTool(name: string): AgentTool {
   return {
@@ -71,9 +72,10 @@ describe('ToolRunner policy enforcement', () => {
     });
 
     it('emits toolCallFailed event when tool is blocked', async () => {
-      const onEvent = vi.fn();
-      await runner.executeTool('write_file', { path: 'x' }, onEvent);
-      expect(onEvent).toHaveBeenCalledWith(
+      const sink = vi.fn();
+      const ctx = makeToolContext(ASK_POLICY, { sink });
+      await runner.executeTool('write_file', { path: 'x' }, ctx);
+      expect(sink).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'toolCallFailed' }),
       );
     });
@@ -169,15 +171,16 @@ describe('ToolRunner policy enforcement', () => {
 
   describe('terminal policy enforcement', () => {
     it('blocks run_command when terminalAllowed is false even if in allowedTools', async () => {
-      runner.setPolicy({
+      const policy = {
         allowedTools: ['read_file', 'run_command'],
         terminalAllowed: false,
-      });
-      const onEvent = vi.fn();
-      const result = await runner.executeTool('run_command', { command: 'ls' }, onEvent);
+      };
+      const sink = vi.fn();
+      const ctx = makeToolContext(policy, { sink });
+      const result = await runner.executeTool('run_command', { command: 'ls' }, ctx);
       expect(result.success).toBe(false);
       expect(result.error).toContain('Terminal access is not allowed');
-      expect(onEvent).toHaveBeenCalledWith(
+      expect(sink).toHaveBeenCalledWith(
         expect.objectContaining({ type: 'toolCallFailed' }),
       );
     });

@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
-import type { AgentTool, ToolResult } from './types';
-import { checkPathAgainstPolicy, type PolicyProvider } from './pathUtils';
+import type { AgentTool, ToolResult, ToolContext } from './types';
+import { checkPathAgainstPolicy } from './pathUtils';
 
 export class ListFilesTool implements AgentTool {
   name = 'list_files';
@@ -20,19 +20,13 @@ export class ListFilesTool implements AgentTool {
     required: [],
   };
 
-  private getPolicy: PolicyProvider;
-
-  constructor(policyProvider?: PolicyProvider) {
-    this.getPolicy = policyProvider ?? (() => null);
-  }
-
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const pattern = (args.pattern as string) || '**/*';
     const maxResults = (args.maxResults as number) || 100;
 
     try {
       const uris = await vscode.workspace.findFiles(pattern, '**/node_modules/**', maxResults);
-      const readPaths = this.getPolicy()?.fileReadPaths;
+      const readPaths = ctx.policy?.fileReadPaths;
       const allowed = readPaths?.length
         ? uris.filter((u) => checkPathAgainstPolicy(u.fsPath, readPaths, 'read').allowed)
         : uris;

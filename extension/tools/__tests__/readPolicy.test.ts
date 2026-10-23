@@ -2,6 +2,7 @@ import { vi, describe, it, expect, beforeEach } from 'vitest';
 import * as vscode from 'vscode';
 import { ListFilesTool } from '../listFiles';
 import type { ToolAccessPolicy } from '../types';
+import { makeToolContext } from './testContext';
 
 describe('ListFilesTool read-path policy gate', () => {
   beforeEach(() => {
@@ -23,9 +24,9 @@ describe('ListFilesTool read-path policy gate', () => {
       terminalAllowed: false,
       fileReadPaths: ['/test-workspace/src/**'],
     };
-    const tool = new ListFilesTool(() => policy);
+    const tool = new ListFilesTool();
 
-    const result = await tool.execute({});
+    const result = await tool.execute({}, makeToolContext(policy));
     expect(result.output).toBe('src/a.ts');
   });
 
@@ -36,7 +37,7 @@ describe('ListFilesTool read-path policy gate', () => {
     ]);
 
     const tool = new ListFilesTool();
-    const result = await tool.execute({});
+    const result = await tool.execute({}, makeToolContext());
     expect(result.output.split('\n')).toHaveLength(2);
   });
 });

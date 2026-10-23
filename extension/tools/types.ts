@@ -1,10 +1,7 @@
-export interface AgentTool {
-  name: string;
-  description: string;
-  parameters: Record<string, unknown>;
-  timeout?: number;
-  execute(args: Record<string, unknown>): Promise<ToolResult>;
-}
+// The canonical, ctx-aware AgentTool lives with the Phase 0 contracts. Re-exported here so
+// existing `import { AgentTool } from './types'` sites resolve to the new signature
+// (execute(args, ctx)). See extension/contracts/toolContext.ts.
+export type { AgentTool, ToolContext, AgentEvent } from '../contracts/toolContext';
 
 export interface ToolResult {
   success: boolean;

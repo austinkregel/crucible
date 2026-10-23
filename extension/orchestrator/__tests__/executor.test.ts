@@ -47,10 +47,12 @@ function makeMockToolRunner() {
         },
       },
     ]),
-    executeTool: vi.fn(async (_name: string, _args: any, _onEvent?: any) => ({
+    executeTool: vi.fn(async (_name: string, _args: any, _ctx?: any) => ({
       success: true,
       output: 'file contents here',
     })),
+    getPolicy: vi.fn(() => null),
+    getToolNames: vi.fn(() => ['read_file']),
   } as unknown as ToolRunner;
 }
 
@@ -106,7 +108,7 @@ describe('Executor', () => {
       expect(toolRunner.executeTool).toHaveBeenCalledWith(
         'read_file',
         { path: 'src/auth.ts' },
-        onEvent,
+        expect.objectContaining({ policy: expect.anything(), human: expect.anything() }),
       );
     });
 

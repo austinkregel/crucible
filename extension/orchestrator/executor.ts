@@ -7,6 +7,9 @@ import type { ToolRunner } from '../tools/runner';
 import type { AuditLogger } from '../audit/logger';
 import { createPatch } from '../audit/diff';
 import { parseToolCalls } from '../tools/toolCallParser';
+import { createToolContext } from '../tools/context';
+import { nativeHumanChannel } from '../tools/nativeHuman';
+import { asRunId, asAgentId } from '../contracts/ids';
 
 const MAX_TOOL_ITERATIONS = 15;
 const MAX_CONSECUTIVE_FAILURES = 3;
@@ -47,6 +50,20 @@ export class Executor {
 
     const toolDefs = this.toolRunner?.getToolDefinitions() ?? [];
     const validToolNames = new Set(toolDefs.map((t) => t.function.name));
+
+    // Per-step tool context for the top-level agent. Policy comes from the runner's mode
+    // policy; events bridge back to the orchestrator's onEvent; human prompts use native
+    // modals until the broker is integrated.
+    const toolContext = createToolContext({
+      ref: { runId: asRunId('root'), agentId: asAgentId('root'), agentType: 'executor' },
+      policy: this.toolRunner?.getPolicy() ?? {
+        allowedTools: this.toolRunner?.getToolNames() ?? [],
+        terminalAllowed: true,
+      },
+      signal: signal ?? new AbortController().signal,
+      human: nativeHumanChannel(),
+      sink: (e) => onEvent?.({ type: e.type as any, data: e.data }),
+    });
     const toolInstructions = toolDefs.length > 0
       ? `\n\nYou have tools available. To call a tool, wrap the call in XML tags:\n<tool_call>\n{"name": "tool_name", "arguments": {"arg": "value"}}\n</tool_call>\n\nAvailable tools: ${toolDefs.map((t) => t.function.name).join(', ')}`
       : '';
@@ -118,7 +135,7 @@ export class Executor {
             }
           }
 
-          const result = await this.toolRunner.executeTool(call.name, call.arguments, onEvent);
+          const result = await this.toolRunner.executeTool(call.name, call.arguments, toolContext);
 
           if (result.success) {
             consecutiveFailures = 0;

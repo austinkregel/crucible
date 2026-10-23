@@ -2,8 +2,10 @@
 import { ref, nextTick, watch, onMounted, computed } from 'vue';
 import { useChatStore, type AgentPhase } from '../stores/chat';
 import { useSettingsStore } from '../stores/settings';
+import { useAgentsStore } from '../stores/agents';
 import { useVSCode } from '../composables/useVSCode';
 import MessageBubble from './MessageBubble.vue';
+import AgentPanel from './AgentPanel.vue';
 import InputBar from './InputBar.vue';
 import CostIndicator from './CostIndicator.vue';
 import PlanViewer from './PlanViewer.vue';
@@ -14,6 +16,7 @@ import SessionHistory from './SessionHistory.vue';
 
 const chatStore = useChatStore();
 const settingsStore = useSettingsStore();
+const agentsStore = useAgentsStore();
 const { postMessage, onMessage } = useVSCode();
 const messagesContainer = ref<HTMLElement | null>(null);
 const contextFiles = ref<string[]>([]);
@@ -112,6 +115,7 @@ onMessage((msg) => {
     case 'newSession':
       chatStore.clearMessages();
       chatStore.clearPlan();
+      agentsStore.reset();
       agentPlan.value = null;
       agentValidation.value = null;
       agentPhase.value = null;
@@ -126,6 +130,7 @@ onMessage((msg) => {
     case 'sessionLoaded':
       chatStore.clearMessages();
       chatStore.clearPlan();
+      agentsStore.reset();
       agentPlan.value = null;
       agentValidation.value = null;
       agentPhase.value = null;
@@ -140,7 +145,19 @@ onMessage((msg) => {
       agentPhase.value = null;
       break;
     case 'agentEvent':
-      handleAgentEvent(msg.event);
+      // New concurrent-agent contract (protocol.ts) carries a `runId`; route those to the
+      // agents store. Legacy single-stream orchestrator events (no runId) keep their old path.
+      if (msg.runId) {
+        agentsStore.handleMessage(msg);
+      } else {
+        handleAgentEvent(msg.event);
+      }
+      break;
+    // Concurrent sub-agent wire (ExtToWebview) — additive, does not touch legacy chat flow.
+    case 'agentTree':
+    case 'agentQuestion':
+    case 'agentQuestionResolved':
+      agentsStore.handleMessage(msg);
       break;
     case 'agentEnd':
       agentRunning.value = false;
@@ -542,6 +559,7 @@ function startNewSession() {
   postMessage({ type: 'newSession' });
   chatStore.clearMessages();
   chatStore.clearPlan();
+  agentsStore.reset();
   agentPlan.value = null;
   agentValidation.value = null;
   agentPhase.value = null;
@@ -624,6 +642,9 @@ defineExpose({ showSessionHistory, startNewSession });
       :current-phase="agentPhase"
       class="border-b border-vscode-border shrink-0"
     />
+
+    <!-- Concurrent sub-agent lanes + attributed human questions (additive, agent runs only) -->
+    <AgentPanel class="shrink-0 mt-2" />
 
     <!-- Messages -->
     <div ref="messagesContainer" class="flex-1 overflow-y-auto px-3 py-2 space-y-2">

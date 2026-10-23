@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as cp from 'child_process';
 import * as path from 'path';
-import type { AgentTool, ToolResult } from './types';
-import { checkPathAgainstPolicy, type PolicyProvider } from './pathUtils';
+import type { AgentTool, ToolResult, ToolContext } from './types';
+import { checkPathAgainstPolicy } from './pathUtils';
 
 export class CodeSearchTool implements AgentTool {
   name = 'search_code';
@@ -26,13 +26,7 @@ export class CodeSearchTool implements AgentTool {
     required: ['pattern'],
   };
 
-  private getPolicy: PolicyProvider;
-
-  constructor(policyProvider?: PolicyProvider) {
-    this.getPolicy = policyProvider ?? (() => null);
-  }
-
-  async execute(args: Record<string, unknown>): Promise<ToolResult> {
+  async execute(args: Record<string, unknown>, ctx: ToolContext): Promise<ToolResult> {
     const pattern = args.pattern as string;
     const glob = args.glob as string | undefined;
     const maxResults = (args.maxResults as number) || 20;
@@ -51,7 +45,7 @@ export class CodeSearchTool implements AgentTool {
     cmd += ` --glob "!node_modules" --glob "!.git" --glob "!dist"`;
     cmd += ` "${pattern.replace(/"/g, '\\"')}"`;
 
-    const readPaths = this.getPolicy()?.fileReadPaths;
+    const readPaths = ctx.policy?.fileReadPaths;
 
     return new Promise((resolve) => {
       cp.exec(cmd, { cwd, timeout: 10_000, maxBuffer: 512 * 1024 }, (err, stdout, stderr) => {
